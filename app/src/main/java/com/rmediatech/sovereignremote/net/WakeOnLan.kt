@@ -14,22 +14,17 @@ object WakeOnLan {
     private const val TAG = "WakeOnLan"
 
     /**
-     * Broadcasts Wake-on-LAN (WoL) Magic Packets to wake sleeping Smart TVs.
-     * Transmits across 255.255.255.255, directed subnet broadcast, and unicast.
+     * Constructs a standard 102-byte Wake-on-LAN Magic Packet payload.
+     * Consists of 6 bytes of 0xFF followed by 16 repetitions of the target MAC address.
+     * Returns null if the MAC address is invalid or malformed.
      */
-    suspend fun wake(macAddress: String, ipAddress: String? = null): Boolean = withContext(Dispatchers.IO) {
+    fun buildMagicPacket(macAddress: String): ByteArray? {
         val cleanMac = macAddress.replace("[:-]".toRegex(), "").trim()
-        if (cleanMac.length != 12) {
-            Log.e(TAG, "Invalid MAC address for WoL: '$macAddress'")
-            return@withContext false
-        }
-
-        try {
+        if (cleanMac.length != 12) return null
+        return try {
             val macBytes = ByteArray(6) { i ->
                 cleanMac.substring(i * 2, i * 2 + 2).toInt(16).toByte()
             }
-
-            // Magic Packet: 6 bytes of 0xFF followed by 16 repetitions of the MAC (102 bytes total)
             val packetData = ByteArray(6 + 16 * 6)
             for (i in 0 until 6) {
                 packetData[i] = 0xFF.toByte()
@@ -37,7 +32,24 @@ object WakeOnLan {
             for (i in 0 until 16) {
                 System.arraycopy(macBytes, 0, packetData, 6 + i * 6, 6)
             }
+            packetData
+        } catch (_: Exception) {
+            null
+        }
+    }
 
+    /**
+     * Broadcasts Wake-on-LAN (WoL) Magic Packets to wake sleeping Smart TVs.
+     * Transmits across 255.255.255.255, directed subnet broadcast, and unicast.
+     */
+    suspend fun wake(macAddress: String, ipAddress: String? = null): Boolean = withContext(Dispatchers.IO) {
+        val packetData = buildMagicPacket(macAddress)
+        if (packetData == null) {
+            Log.e(TAG, "Invalid MAC address for WoL: '$macAddress'")
+            return@withContext false
+        }
+
+        try {
             val targets = mutableListOf<InetAddress>()
             // 1. Universal broadcast
             try {

@@ -1,6 +1,5 @@
 package com.rmediatech.sovereignremote
 
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -8,15 +7,15 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
 import com.rmediatech.sovereignremote.discovery.UniversalTvScanner
+import com.rmediatech.sovereignremote.model.DeviceSerializer
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import com.rmediatech.sovereignremote.ui.components.RemoteScreen
 import com.rmediatech.sovereignremote.ui.theme.SovereignRemoteTheme
+import com.rmediatech.sovereignremote.ui.theme.ThemePreset
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
 
@@ -29,9 +28,17 @@ class MainActivity : ComponentActivity() {
         scanner = UniversalTvScanner(applicationContext, registry)
 
         setContent {
-            SovereignRemoteTheme {
-                val prefs = remember { getSharedPreferences("sovereign_remote", android.content.Context.MODE_PRIVATE) }
-                val initialDevices = remember { loadSavedDevices(prefs) }
+            val prefs = remember { getSharedPreferences("sovereign_remote", android.content.Context.MODE_PRIVATE) }
+            val savedThemeId = prefs.getString("active_theme_preset", ThemePreset.CYBER_TACTICAL.id)
+            var currentTheme by remember { mutableStateOf(ThemePreset.fromId(savedThemeId)) }
+
+            fun onSelectTheme(preset: ThemePreset) {
+                currentTheme = preset
+                prefs.edit().putString("active_theme_preset", preset.id).apply()
+            }
+
+            SovereignRemoteTheme(preset = currentTheme) {
+                val initialDevices = remember { DeviceSerializer.deserialize(prefs.getString("saved_devices_json", null)) }
                 var discoveredDevices by remember { mutableStateOf(initialDevices) }
                 var isScanning by remember { mutableStateOf(false) }
 
@@ -68,9 +75,9 @@ class MainActivity : ComponentActivity() {
                     lifecycleScope.launch {
                         try {
                             val results = scanner.discoverAll(timeoutMs = 3500)
-                            val merged = mergeDevices(discoveredDevices, results)
+                            val merged = DeviceSerializer.merge(discoveredDevices, results)
                             discoveredDevices = merged
-                            saveDevices(prefs, merged)
+                            prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
 
                             val prefIp = prefs.getString("last_selected_ip", null)
                             val eligible = merged.filter { !hiddenIps.contains(it.ipAddress) }
@@ -122,9 +129,9 @@ class MainActivity : ComponentActivity() {
                             port = 8008,
                             deviceType = DeviceType.GENERIC
                         )
-                        val merged = mergeDevices(discoveredDevices, listOf(device))
+                        val merged = DeviceSerializer.merge(discoveredDevices, listOf(device))
                         discoveredDevices = merged
-                        saveDevices(prefs, merged)
+                        prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
                         currentDevice = device
                         prefs.edit().putString("last_selected_ip", device.ipAddress).apply()
                         Toast.makeText(this@MainActivity, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
@@ -141,6 +148,8 @@ class MainActivity : ComponentActivity() {
                     discoveredDevices = discoveredDevices,
                     hiddenIps = hiddenIps,
                     isScanning = isScanning,
+                    currentTheme = currentTheme,
+                    onSelectTheme = { onSelectTheme(it) },
                     onScanRequested = { runDiscovery() },
                     onSelectDevice = { selectDevice(it) },
                     onToggleHideDevice = { toggleHideDevice(it) },
@@ -149,62 +158,5 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-    }
-
-    private fun mergeDevices(existing: List<RemoteDevice>, fresh: List<RemoteDevice>): List<RemoteDevice> {
-        val map = existing.associateBy { it.ipAddress }.toMutableMap()
-        for (f in fresh) {
-            val old = map[f.ipAddress]
-            if (old != null) {
-                map[f.ipAddress] = f.copy(
-                    macAddress = f.macAddress ?: old.macAddress,
-                    modelName = f.modelName ?: old.modelName
-                )
-            } else {
-                map[f.ipAddress] = f
-            }
-        }
-        return map.values.toList()
-    }
-
-    private fun saveDevices(prefs: SharedPreferences, devices: List<RemoteDevice>) {
-        val arr = JSONArray()
-        for (d in devices) {
-            val obj = JSONObject()
-            obj.put("id", d.id)
-            obj.put("name", d.name)
-            obj.put("ipAddress", d.ipAddress)
-            obj.put("port", d.port)
-            obj.put("deviceType", d.deviceType.name)
-            obj.put("modelName", d.modelName ?: "")
-            obj.put("isEthernet", d.isEthernet)
-            obj.put("macAddress", d.macAddress ?: "")
-            arr.put(obj)
-        }
-        prefs.edit().putString("saved_devices_json", arr.toString()).apply()
-    }
-
-    private fun loadSavedDevices(prefs: SharedPreferences): List<RemoteDevice> {
-        val jsonStr = prefs.getString("saved_devices_json", null) ?: return emptyList()
-        val list = mutableListOf<RemoteDevice>()
-        try {
-            val arr = JSONArray(jsonStr)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                list.add(
-                    RemoteDevice(
-                        id = obj.getString("id"),
-                        name = obj.getString("name"),
-                        ipAddress = obj.getString("ipAddress"),
-                        port = obj.getInt("port"),
-                        deviceType = DeviceType.valueOf(obj.getString("deviceType")),
-                        modelName = obj.optString("modelName").takeIf { it.isNotBlank() },
-                        isEthernet = obj.optBoolean("isEthernet", false),
-                        macAddress = obj.optString("macAddress").takeIf { it.isNotBlank() }
-                    )
-                )
-            }
-        } catch (_: Exception) {}
-        return list
     }
 }

@@ -54,6 +54,9 @@ android {
             excludes += "META-INF/NOTICE.txt"
         }
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -75,4 +78,9 @@ dependencies {
         exclude(group = "org.junit.platform")
         exclude(group = "org.junit.vintage")
     }
+
+    // TDD & Unit Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("org.json:json:20240303")
 }

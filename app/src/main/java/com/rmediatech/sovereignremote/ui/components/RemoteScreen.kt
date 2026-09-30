@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,7 +17,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,23 +30,30 @@ fun RemoteScreen(
     discoveredDevices: List<RemoteDevice>,
     hiddenIps: Set<String> = emptySet(),
     isScanning: Boolean,
+    currentTheme: ThemePreset = ThemePreset.CYBER_TACTICAL,
+    onSelectTheme: (ThemePreset) -> Unit = {},
     onScanRequested: () -> Unit,
     onSelectDevice: (RemoteDevice) -> Unit,
     onToggleHideDevice: (String) -> Unit = {},
     onManualIpAdded: (String) -> Unit,
     onSendKey: (RemoteKey) -> Unit
 ) {
+    var showThemeDialog by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     var showManualIpDialog by remember { mutableStateOf(false) }
     var manualIpInput by remember { mutableStateOf("") }
     val view = LocalView.current
+
+    val palette = LocalThemePalette.current
+    val icons = LocalThemeIcons.current
+    val layout = LocalThemeLayout.current
 
     fun performHaptic() {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
     Scaffold(
-        containerColor = VoidBlack
+        containerColor = palette.background
     ) { padding ->
         Column(
             modifier = Modifier
@@ -71,28 +76,45 @@ fun RemoteScreen(
                     Text(
                         text = "⚡ SOVEREIGN REMOTE",
                         style = MaterialTheme.typography.titleLarge,
-                        color = NeonCyan
+                        color = palette.primaryAccent
                     )
 
-                    IconButton(
-                        onClick = {
-                            performHaptic()
-                            onScanRequested()
-                        },
-                        enabled = !isScanning
-                    ) {
-                        if (isScanning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = NeonCyan,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Theme Switcher Button
+                        IconButton(
+                            onClick = {
+                                performHaptic()
+                                showThemeDialog = true
+                            }
+                        ) {
                             Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = "Scan Wi-Fi",
-                                tint = NeonCyan
+                                imageVector = icons.themeSwitcher,
+                                contentDescription = "Switch Theme",
+                                tint = palette.primaryAccent
                             )
+                        }
+
+                        // Wi-Fi Refresh / Scan Button
+                        IconButton(
+                            onClick = {
+                                performHaptic()
+                                onScanRequested()
+                            },
+                            enabled = !isScanning
+                        ) {
+                            if (isScanning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = palette.primaryAccent,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = "Scan Wi-Fi",
+                                    tint = palette.primaryAccent
+                                )
+                            }
                         }
                     }
                 }
@@ -104,8 +126,8 @@ fun RemoteScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceDark)
-                        .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(12.dp))
                         .clickable {
                             performHaptic()
                             showDeviceDialog = true
@@ -119,7 +141,7 @@ fun RemoteScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (currentDevice != null) EmeraldGreen else CrimsonRed)
+                                .background(if (currentDevice != null) Color(0xFF00E676) else palette.powerColor)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
@@ -127,6 +149,7 @@ fun RemoteScreen(
                                 Text(
                                     text = currentDevice?.name ?: "No Device Selected",
                                     style = MaterialTheme.typography.titleMedium,
+                                    color = palette.textPrimary,
                                     fontSize = 14.sp
                                 )
                                 if (currentDevice != null) {
@@ -153,57 +176,58 @@ fun RemoteScreen(
                                 text = currentDevice?.let { 
                                     "${it.ipAddress} • " + (if (it.isEthernet) "Ethernet" else "Wi-Fi") + (it.modelName?.let { m -> " ($m)" } ?: "") + (it.macAddress?.let { mac -> " • $mac" } ?: "")
                                 } ?: "Tap to select or scan",
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                color = palette.textSecondary
                             )
                         }
                     }
                     Icon(
                         imageVector = Icons.Rounded.KeyboardArrowDown,
                         contentDescription = "Select",
-                        tint = TextSecondary
+                        tint = palette.textSecondary
                     )
                 }
             }
 
-            // --- TOP ACTION BUTTONS (POWER, BACK, HOME, INFO) ---
+            // --- TOP ACTION BUTTONS (POWER, BACK, HOME, OPTIONS) ---
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TacticalRoundButton(
-                    icon = Icons.Rounded.PowerSettingsNew,
+                    icon = icons.power,
                     label = "POWER",
-                    accentColor = CrimsonRed,
+                    accentColor = palette.powerColor,
                     onClick = {
                         performHaptic()
                         onSendKey(RemoteKey.POWER)
                     }
                 )
                 TacticalRoundButton(
-                    icon = Icons.Rounded.ArrowBack,
+                    icon = icons.back,
                     label = "BACK",
-                    accentColor = TextPrimary,
+                    accentColor = palette.textPrimary,
                     onClick = {
                         performHaptic()
                         onSendKey(RemoteKey.BACK)
                     }
                 )
                 TacticalRoundButton(
-                    icon = Icons.Rounded.Home,
+                    icon = icons.home,
                     label = "HOME",
-                    accentColor = NeonCyan,
+                    accentColor = palette.primaryAccent,
                     onClick = {
                         performHaptic()
                         onSendKey(RemoteKey.HOME)
                     }
                 )
                 TacticalRoundButton(
-                    icon = Icons.Rounded.Star,
+                    icon = icons.options,
                     label = "OPTIONS",
-                    accentColor = TextSecondary,
+                    accentColor = palette.secondaryAccent,
                     onClick = {
                         performHaptic()
                         onSendKey(RemoteKey.INFO)
@@ -211,105 +235,38 @@ fun RemoteScreen(
                 )
             }
 
-            // --- CENTRAL D-PAD CONTROLLER ---
-            Box(
-                modifier = Modifier
-                    .size(240.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceDark)
-                    .border(1.dp, BorderSubtle, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                // UP
-                IconButton(
-                    onClick = { performHaptic(); onSendKey(RemoteKey.UP) },
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 10.dp)
-                        .size(56.dp)
-                ) {
-                    Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Up", tint = TextPrimary, modifier = Modifier.size(36.dp))
-                }
-
-                // DOWN
-                IconButton(
-                    onClick = { performHaptic(); onSendKey(RemoteKey.DOWN) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 10.dp)
-                        .size(56.dp)
-                ) {
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Down", tint = TextPrimary, modifier = Modifier.size(36.dp))
-                }
-
-                // LEFT
-                IconButton(
-                    onClick = { performHaptic(); onSendKey(RemoteKey.LEFT) },
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 10.dp)
-                        .size(56.dp)
-                ) {
-                    Icon(Icons.Rounded.KeyboardArrowLeft, contentDescription = "Left", tint = TextPrimary, modifier = Modifier.size(36.dp))
-                }
-
-                // RIGHT
-                IconButton(
-                    onClick = { performHaptic(); onSendKey(RemoteKey.RIGHT) },
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 10.dp)
-                        .size(56.dp)
-                ) {
-                    Icon(Icons.Rounded.KeyboardArrowRight, contentDescription = "Right", tint = TextPrimary, modifier = Modifier.size(36.dp))
-                }
-
-                // CENTER OK / SELECT BUTTON
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(SurfaceElevated)
-                        .border(1.5.dp, NeonCyan, CircleShape)
-                        .clickable {
-                            performHaptic()
-                            onSendKey(RemoteKey.SELECT)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "OK",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = NeonCyan
-                    )
-                }
+            // --- CENTRAL CONTROLLER (DYNAMIC THEME ARCHITECTURE) ---
+            when (layout) {
+                ThemeLayoutType.RADAR_CIRCULAR -> RadarCircularController(onSendKey, ::performHaptic)
+                ThemeLayoutType.GEOMETRIC_PAD -> GeometricPadController(onSendKey, ::performHaptic)
+                ThemeLayoutType.RETRO_CROSS -> RetroCrossController(onSendKey, ::performHaptic)
+                ThemeLayoutType.STEALTH_COLUMNS -> StealthColumnsController(onSendKey, ::performHaptic)
             }
 
             // --- PLAYBACK CONTROLS ---
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.REWIND) }) {
-                    Icon(Icons.Rounded.FastRewind, contentDescription = "Rev", tint = TextSecondary, modifier = Modifier.size(30.dp))
+                    Icon(icons.rewind, contentDescription = "Rev", tint = palette.textSecondary, modifier = Modifier.size(28.dp))
                 }
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(50.dp)
                         .clip(CircleShape)
-                        .background(SurfaceElevated)
-                        .border(1.dp, BorderSubtle, CircleShape)
+                        .background(palette.surfaceElevated)
+                        .border(1.dp, palette.border, CircleShape)
                         .clickable { performHaptic(); onSendKey(RemoteKey.PLAY_PAUSE) },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Play/Pause", tint = NeonCyan, modifier = Modifier.size(32.dp))
+                    Icon(icons.playPause, contentDescription = "Play/Pause", tint = palette.primaryAccent, modifier = Modifier.size(30.dp))
                 }
                 IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.FAST_FORWARD) }) {
-                    Icon(Icons.Rounded.FastForward, contentDescription = "Fwd", tint = TextSecondary, modifier = Modifier.size(30.dp))
+                    Icon(icons.fastForward, contentDescription = "Fwd", tint = palette.textSecondary, modifier = Modifier.size(28.dp))
                 }
             }
 
@@ -318,31 +275,40 @@ fun RemoteScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(SurfaceDark)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.VOLUME_DOWN) }) {
-                    Icon(Icons.Rounded.VolumeDown, contentDescription = "Vol -", tint = TextPrimary)
+                    Icon(icons.volDown, contentDescription = "Vol -", tint = palette.textPrimary)
                 }
                 IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.MUTE) }) {
-                    Icon(Icons.Rounded.VolumeMute, contentDescription = "Mute", tint = CrimsonRed)
+                    Icon(icons.mute, contentDescription = "Mute", tint = palette.powerColor)
                 }
                 IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.VOLUME_UP) }) {
-                    Icon(Icons.Rounded.VolumeUp, contentDescription = "Vol +", tint = TextPrimary)
+                    Icon(icons.volUp, contentDescription = "Vol +", tint = palette.textPrimary)
                 }
             }
+        }
+
+        // --- THEME SELECTION MODAL DIALOG ---
+        if (showThemeDialog) {
+            ThemeSelectionDialog(
+                currentTheme = currentTheme,
+                onSelectTheme = onSelectTheme,
+                onDismiss = { showThemeDialog = false }
+            )
         }
 
         // --- DEVICE SELECTION MODAL DIALOG ---
         if (showDeviceDialog) {
             AlertDialog(
                 onDismissRequest = { showDeviceDialog = false },
-                containerColor = SurfaceDark,
+                containerColor = palette.surface,
                 title = {
-                    Text("Discovered Devices", style = MaterialTheme.typography.titleMedium)
+                    Text("Discovered Devices", style = MaterialTheme.typography.titleMedium, color = palette.textPrimary)
                 },
                 text = {
                     Column {
@@ -350,7 +316,7 @@ fun RemoteScreen(
                             Text(
                                 "No devices discovered yet.\nTap 'Scan Wi-Fi' or enter IP manually.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary
+                                color = palette.textSecondary
                             )
                         } else {
                             val visibleDevices = discoveredDevices.filter { !hiddenIps.contains(it.ipAddress) }
@@ -361,7 +327,7 @@ fun RemoteScreen(
                                 Text(
                                     "All discovered devices are currently hidden.\nExpand hidden section below to unhide.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary,
+                                    color = palette.textSecondary,
                                     modifier = Modifier.padding(vertical = 8.dp)
                                 )
                             } else {
@@ -370,7 +336,7 @@ fun RemoteScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(if (device.id == currentDevice?.id) SurfaceElevated else Color.Transparent)
+                                            .background(if (device.id == currentDevice?.id) palette.surfaceElevated else Color.Transparent)
                                             .clickable {
                                                 onSelectDevice(device)
                                                 showDeviceDialog = false
@@ -388,7 +354,7 @@ fun RemoteScreen(
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(device.name, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                                    Text(device.name, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Box(
                                                         modifier = Modifier
@@ -408,7 +374,8 @@ fun RemoteScreen(
                                                 }
                                                 Text(
                                                     "${device.ipAddress} • " + (if (device.isEthernet) "Ethernet" else "Wi-Fi") + (device.modelName?.let { " • $it" } ?: "") + (device.macAddress?.let { " • $it" } ?: ""),
-                                                    style = MaterialTheme.typography.labelSmall
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = palette.textSecondary
                                                 )
                                             }
                                         }
@@ -419,7 +386,7 @@ fun RemoteScreen(
                                             Icon(
                                                 imageVector = Icons.Rounded.VisibilityOff,
                                                 contentDescription = "Hide Device",
-                                                tint = TextSecondary,
+                                                tint = palette.textSecondary,
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
@@ -433,7 +400,7 @@ fun RemoteScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(SurfaceDark)
+                                        .background(palette.surfaceElevated)
                                         .clickable { showHidden = !showHidden }
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -442,12 +409,12 @@ fun RemoteScreen(
                                     Text(
                                         text = "Hidden / Neighbor TVs (${hiddenDevices.size})",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = TextSecondary
+                                        color = palette.textSecondary
                                     )
                                     Icon(
                                         imageVector = if (showHidden) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                                         contentDescription = "Toggle Hidden",
-                                        tint = TextSecondary,
+                                        tint = palette.textSecondary,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -462,11 +429,11 @@ fun RemoteScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text(device.name, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                                Text(device.ipAddress, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                                Text(device.name, style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
+                                                Text(device.ipAddress, style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
                                             }
                                             TextButton(onClick = { onToggleHideDevice(device.ipAddress) }) {
-                                                Text("Unhide", fontSize = 11.sp, color = NeonCyan)
+                                                Text("Unhide", fontSize = 11.sp, color = palette.primaryAccent)
                                             }
                                         }
                                     }
@@ -480,12 +447,12 @@ fun RemoteScreen(
                         showDeviceDialog = false
                         showManualIpDialog = true
                     }) {
-                        Text("Add IP Manually", color = NeonCyan)
+                        Text("Add IP Manually", color = palette.primaryAccent)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeviceDialog = false }) {
-                        Text("Close", color = TextSecondary)
+                        Text("Close", color = palette.textSecondary)
                     }
                 }
             )
@@ -495,8 +462,8 @@ fun RemoteScreen(
         if (showManualIpDialog) {
             AlertDialog(
                 onDismissRequest = { showManualIpDialog = false },
-                containerColor = SurfaceDark,
-                title = { Text("Manual TV IP Address", style = MaterialTheme.typography.titleMedium) },
+                containerColor = palette.surface,
+                title = { Text("Manual TV IP Address", style = MaterialTheme.typography.titleMedium, color = palette.textPrimary) },
                 text = {
                     OutlinedTextField(
                         value = manualIpInput,
@@ -504,10 +471,10 @@ fun RemoteScreen(
                         label = { Text("e.g. 192.168.1.150") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            focusedBorderColor = NeonCyan,
-                            unfocusedBorderColor = BorderSubtle
+                            focusedTextColor = palette.textPrimary,
+                            unfocusedTextColor = palette.textPrimary,
+                            focusedBorderColor = palette.primaryAccent,
+                            unfocusedBorderColor = palette.border
                         )
                     )
                 },
@@ -520,14 +487,14 @@ fun RemoteScreen(
                                 manualIpInput = ""
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = VoidBlack)
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.primaryAccent, contentColor = palette.background)
                     ) {
                         Text("Connect", fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showManualIpDialog = false }) {
-                        Text("Cancel", color = TextSecondary)
+                        Text("Cancel", color = palette.textSecondary)
                     }
                 }
             )
@@ -542,12 +509,13 @@ fun TacticalRoundButton(
     accentColor: Color,
     onClick: () -> Unit
 ) {
+    val palette = LocalThemePalette.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(54.dp)
                 .clip(CircleShape)
-                .background(SurfaceDark)
+                .background(palette.surface)
                 .border(1.dp, accentColor.copy(alpha = 0.6f), CircleShape)
                 .clickable { onClick() },
             contentAlignment = Alignment.Center
@@ -564,7 +532,7 @@ fun TacticalRoundButton(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
-            color = TextSecondary
+            color = palette.textSecondary
         )
     }
 }
