@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SovereignRemote"
+rootProject.name = "Argus"
 include(":app")
