@@ -32,16 +32,7 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
         val privKey = File(keyDir, "adbkey")
         val pubKey = File(keyDir, "adbkey.pub")
         if (!privKey.exists() || !pubKey.exists()) {
-            try {
-                context.assets.open("adb/adbkey").use { input ->
-                    FileOutputStream(privKey).use { output -> input.copyTo(output) }
-                }
-                context.assets.open("adb/adbkey.pub").use { input ->
-                    FileOutputStream(pubKey).use { output -> input.copyTo(output) }
-                }
-            } catch (e: Exception) {
-                AdbKeyPair.generate(privKey, pubKey)
-            }
+            AdbKeyPair.generate(privKey, pubKey)
         }
         AdbKeyPair.read(privKey, pubKey)
     }
