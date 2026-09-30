@@ -9,6 +9,13 @@ enum class DeviceType(val displayName: String, val badgeColorHex: Long) {
     GENERIC("Smart TV", 0xFF9CA3AF)        // Slate Gray
 }
 
+enum class DeviceLivenessState(val label: String, val colorHex: Long) {
+    ONLINE("ONLINE", 0xFF00E676),        // Vibrant Neon Green
+    STANDBY("STANDBY", 0xFFFFAB00),      // Sunset Amber / Sleep
+    WAKING("WAKING...", 0xFF00E5FF),     // Electric Cyan Pulse
+    DISCONNECTED("OFFLINE", 0xFF9CA3AF)  // Slate Muted Gray
+}
+
 enum class RemoteKey(val code: String) {
     POWER("Power"),
     HOME("Home"),

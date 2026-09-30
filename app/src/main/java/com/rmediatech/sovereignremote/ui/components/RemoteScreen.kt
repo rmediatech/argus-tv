@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.*
+import com.rmediatech.sovereignremote.model.DeviceLivenessState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import com.rmediatech.sovereignremote.ui.theme.*
@@ -30,6 +32,9 @@ fun RemoteScreen(
     discoveredDevices: List<RemoteDevice>,
     hiddenIps: Set<String> = emptySet(),
     isScanning: Boolean,
+    livenessState: DeviceLivenessState = DeviceLivenessState.DISCONNECTED,
+    lastAckLatencyMs: Long? = null,
+    isAckActive: Boolean = false,
     currentTheme: ThemePreset = ThemePreset.CYBER_TACTICAL,
     onSelectTheme: (ThemePreset) -> Unit = {},
     onScanRequested: () -> Unit,
@@ -44,6 +49,17 @@ fun RemoteScreen(
     var showAboutDialog by remember { mutableStateOf(false) }
     var manualIpInput by remember { mutableStateOf("") }
     val view = LocalView.current
+
+    val infiniteTransition = rememberInfiniteTransition(label = "LivenessPulse")
+    val wakingAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wakingAlpha"
+    )
 
     val palette = LocalThemePalette.current
     val icons = LocalThemeIcons.current
@@ -157,12 +173,17 @@ fun RemoteScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Target Device Card
+                val cardBorderColor = if (isAckActive) {
+                    if (lastAckLatencyMs == -1L) Color(0xFFFF1744) else palette.primaryAccent
+                } else palette.border
+                val cardBorderWidth = if (isAckActive) 1.5.dp else 1.dp
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(palette.surface)
-                        .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+                        .border(cardBorderWidth, cardBorderColor, RoundedCornerShape(12.dp))
                         .clickable {
                             performHaptic()
                             showDeviceDialog = true
@@ -172,11 +193,19 @@ fun RemoteScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        val dotColor = Color(livenessState.colorHex)
+                        val dotAlpha = if (livenessState == DeviceLivenessState.WAKING) wakingAlpha else 1.0f
+
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (currentDevice != null) Color(0xFF00E676) else palette.powerColor)
+                                .background(dotColor.copy(alpha = dotAlpha))
+                                .then(
+                                    if (livenessState == DeviceLivenessState.ONLINE) {
+                                        Modifier.border(2.dp, dotColor.copy(alpha = 0.35f), CircleShape)
+                                    } else Modifier
+                                )
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
@@ -205,14 +234,39 @@ fun RemoteScreen(
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
+
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    val statusColor = Color(livenessState.colorHex)
+                                    val badgeAlpha = if (livenessState == DeviceLivenessState.WAKING) wakingAlpha else 1.0f
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(statusColor.copy(alpha = if (livenessState == DeviceLivenessState.WAKING) badgeAlpha * 0.2f else 0.15f))
+                                            .border(1.dp, statusColor.copy(alpha = if (livenessState == DeviceLivenessState.WAKING) badgeAlpha else 0.6f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = livenessState.label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = statusColor,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
+                            }
+
+                            val ackText = when {
+                                lastAckLatencyMs != null && lastAckLatencyMs >= 0 -> " • ACK < ${lastAckLatencyMs.coerceAtLeast(1)}ms"
+                                lastAckLatencyMs == -1L -> " • TIMEOUT"
+                                else -> ""
                             }
                             Text(
                                 text = currentDevice?.let { 
-                                    "${it.ipAddress} • " + (if (it.isEthernet) "Ethernet" else "Wi-Fi") + (it.modelName?.let { m -> " ($m)" } ?: "") + (it.macAddress?.let { mac -> " • $mac" } ?: "")
+                                    "${it.ipAddress} • " + (if (it.isEthernet) "Ethernet" else "Wi-Fi") + (it.modelName?.let { m -> " ($m)" } ?: "") + ackText
                                 } ?: "Tap to select or scan",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = palette.textSecondary
+                                color = if (lastAckLatencyMs == -1L) Color(0xFFFF1744) else palette.textSecondary
                             )
                         }
                     }
@@ -232,10 +286,16 @@ fun RemoteScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val (powerLabel, powerColor) = when (livenessState) {
+                    DeviceLivenessState.STANDBY -> "WAKE" to Color(0xFFFFAB00)
+                    DeviceLivenessState.WAKING -> "WAKING" to Color(0xFF00E5FF)
+                    DeviceLivenessState.ONLINE -> "POWER" to palette.powerColor
+                    DeviceLivenessState.DISCONNECTED -> "POWER" to palette.powerColor
+                }
                 TacticalRoundButton(
                     icon = icons.power,
-                    label = "POWER",
-                    accentColor = palette.powerColor,
+                    label = powerLabel,
+                    accentColor = powerColor,
                     onClick = {
                         performHaptic()
                         onSendKey(RemoteKey.POWER)

@@ -7,14 +7,19 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
 import com.rmediatech.sovereignremote.discovery.UniversalTvScanner
+import com.rmediatech.sovereignremote.model.DeviceLivenessState
 import com.rmediatech.sovereignremote.model.DeviceSerializer
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import com.rmediatech.sovereignremote.net.DeviceLivenessTracker
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import com.rmediatech.sovereignremote.ui.components.RemoteScreen
 import com.rmediatech.sovereignremote.ui.theme.SovereignRemoteTheme
 import com.rmediatech.sovereignremote.ui.theme.ThemePreset
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -55,6 +60,10 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                var livenessState by remember { mutableStateOf(DeviceLivenessState.DISCONNECTED) }
+                var lastAckLatencyMs by remember { mutableStateOf<Long?>(null) }
+                var isAckActive by remember { mutableStateOf(false) }
+
                 fun toggleHideDevice(ip: String) {
                     val updated = if (hiddenIps.contains(ip)) hiddenIps - ip else hiddenIps + ip
                     hiddenIps = updated
@@ -67,6 +76,22 @@ class MainActivity : ComponentActivity() {
                 fun selectDevice(device: RemoteDevice) {
                     currentDevice = device
                     prefs.edit().putString("last_selected_ip", device.ipAddress).apply()
+                }
+
+                // Periodic Liveness Heartbeat Probe
+                LaunchedEffect(currentDevice) {
+                    val dev = currentDevice
+                    if (dev == null) {
+                        livenessState = DeviceLivenessState.DISCONNECTED
+                        return@LaunchedEffect
+                    }
+                    while (isActive) {
+                        if (livenessState != DeviceLivenessState.WAKING) {
+                            val state = DeviceLivenessTracker.probeLiveness(dev, 250)
+                            livenessState = state
+                        }
+                        delay(4000)
+                    }
                 }
 
                 fun runDiscovery() {
@@ -87,12 +112,9 @@ class MainActivity : ComponentActivity() {
 
                             if (preferred != null && (currentDevice == null || currentDevice?.ipAddress == prefIp)) {
                                 currentDevice = preferred
-                                Toast.makeText(this@MainActivity, "Connected to ${preferred.name}", Toast.LENGTH_SHORT).show()
-                            } else if (results.isEmpty() && merged.isEmpty()) {
-                                Toast.makeText(this@MainActivity, "No TVs discovered on Wi-Fi", Toast.LENGTH_SHORT).show()
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(this@MainActivity, "Discovery error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            android.util.Log.e("MainActivity", "Discovery error: ${e.message}", e)
                         } finally {
                             isScanning = false
                         }
@@ -107,14 +129,58 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (key == RemoteKey.POWER) {
-                        Toast.makeText(this@MainActivity, "Powering ${device.name}...", Toast.LENGTH_SHORT).show()
+                        livenessState = DeviceLivenessState.WAKING
+                        // Send Wake-on-LAN if MAC address is known
+                        device.macAddress?.let { mac ->
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress)
+                            }
+                        }
                     }
 
+                    val t0 = System.currentTimeMillis()
                     lifecycleScope.launch {
                         val result = registry.sendKey(device, key)
-                        result.onFailure {
-                            android.util.Log.e("MainActivity", "Command failed on ${device.ipAddress}: ${it.message}", it)
-                            Toast.makeText(this@MainActivity, "Command failed: ${it.message}", Toast.LENGTH_SHORT).show()
+                        val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1)
+                        if (result.isSuccess) {
+                            lastAckLatencyMs = elapsed
+                            isAckActive = true
+                            if (key != RemoteKey.POWER) {
+                                livenessState = DeviceLivenessState.ONLINE
+                            }
+                            launch {
+                                delay(350)
+                                isAckActive = false
+                            }
+                        } else {
+                            lastAckLatencyMs = -1L
+                            isAckActive = true
+                            launch {
+                                delay(800)
+                                isAckActive = false
+                            }
+                            result.onFailure {
+                                android.util.Log.e("MainActivity", "Command failed on ${device.ipAddress}: ${it.message}", it)
+                            }
+                        }
+
+                        // For POWER key, actively fast-poll device port to detect wake-up
+                        if (key == RemoteKey.POWER) {
+                            launch {
+                                var detectedOnline = false
+                                for (i in 1..16) {
+                                    delay(600)
+                                    val state = DeviceLivenessTracker.probeLiveness(device, 250)
+                                    if (state == DeviceLivenessState.ONLINE) {
+                                        livenessState = DeviceLivenessState.ONLINE
+                                        detectedOnline = true
+                                        break
+                                    }
+                                }
+                                if (!detectedOnline) {
+                                    livenessState = DeviceLivenessTracker.probeLiveness(device, 300)
+                                }
+                            }
                         }
                     }
                 }
@@ -134,7 +200,6 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
                         currentDevice = device
                         prefs.edit().putString("last_selected_ip", device.ipAddress).apply()
-                        Toast.makeText(this@MainActivity, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
                     }
                 }
 
@@ -148,6 +213,9 @@ class MainActivity : ComponentActivity() {
                     discoveredDevices = discoveredDevices,
                     hiddenIps = hiddenIps,
                     isScanning = isScanning,
+                    livenessState = livenessState,
+                    lastAckLatencyMs = lastAckLatencyMs,
+                    isAckActive = isAckActive,
                     currentTheme = currentTheme,
                     onSelectTheme = { onSelectTheme(it) },
                     onScanRequested = { runDiscovery() },
