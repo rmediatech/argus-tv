@@ -1,16 +1,17 @@
-# 📱 Sovereign Remote — Zero-Cloud Smart TV & Media Controller
+# 📱 Argus — Zero-Cloud Smart TV & Media Controller
 
 > **Platform:** 100% Native Android (Kotlin + Jetpack Compose)  
 > **Privacy Invariant:** Zero Cloud, Zero Tracking, Zero Ads. All commands execute locally on your LAN.  
-> **Latency:** $<5\text{ ms}$ direct microsecond response over local Wi-Fi.
+> **Latency:** $<5\text{ ms}$ direct microsecond response over local Wi-Fi.  
+> **Developer:** Crafted by RMediaTech ([rmediatech.com](https://rmediatech.com))  
 
 ---
 
 ## 🌟 Overview
 
-**Sovereign Remote** is a sleek, lightweight, tactical native Android remote controller built for smart TVs and network media players (Roku, smart displays, streaming boxes). 
+**Argus** (named after *Argus Panoptes*, the all-seeing guardian of classical Greek lore) is a sleek, lightweight, tactical native Android remote controller built for smart TVs and network media players (Google TV, Android TV, Fire TV, Roku, Smart TVs, and Wake-on-LAN hosts). 
 
-Unlike commercial remote apps from the Google Play Store that demand account logins, track your viewing history, and bombard you with advertisements, Sovereign Remote communicates **directly with your TV over your local home Wi-Fi network**.
+Unlike commercial remote apps from the Google Play Store that demand account logins, track your viewing history, and bombard you with advertisements, Argus communicates **directly with your TV over your local home Wi-Fi network**.
 
 ---
 

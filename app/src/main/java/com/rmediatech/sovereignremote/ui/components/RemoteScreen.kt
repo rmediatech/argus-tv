@@ -41,6 +41,7 @@ fun RemoteScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     var showManualIpDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
     var manualIpInput by remember { mutableStateOf("") }
     val view = LocalView.current
 
@@ -73,11 +74,31 @@ fun RemoteScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "⚡ SOVEREIGN REMOTE",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = palette.primaryAccent
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "ARGUS",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 2.sp
+                            ),
+                            color = palette.primaryAccent
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(palette.primaryAccent.copy(alpha = 0.15f))
+                                .border(1.dp, palette.primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "SOVEREIGN",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = palette.primaryAccent
+                            )
+                        }
+                    }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // Theme Switcher Button
@@ -115,6 +136,20 @@ fun RemoteScreen(
                                     tint = palette.primaryAccent
                                 )
                             }
+                        }
+
+                        // Unobtrusive About / Info Button
+                        IconButton(
+                            onClick = {
+                                performHaptic()
+                                showAboutDialog = true
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Info,
+                                contentDescription = "About Argus",
+                                tint = palette.primaryAccent
+                            )
                         }
                     }
                 }
@@ -495,6 +530,79 @@ fun RemoteScreen(
                 dismissButton = {
                     TextButton(onClick = { showManualIpDialog = false }) {
                         Text("Cancel", color = palette.textSecondary)
+                    }
+                }
+            )
+        }
+
+        // --- ABOUT / INFO DIALOG ---
+        if (showAboutDialog) {
+            AlertDialog(
+                onDismissRequest = { showAboutDialog = false },
+                containerColor = palette.surface,
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = palette.primaryAccent,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "About Argus",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textPrimary
+                        )
+                    }
+                },
+                text = {
+                    Column {
+                        Text(
+                            "Argus Sovereign Remote v1.0.0",
+                            fontWeight = FontWeight.Bold,
+                            color = palette.primaryAccent,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "The all-seeing, zero-cloud universal device & smart TV controller. Communicates directly with Google TV, Android TV, Fire TV, Roku, Smart TVs, and Wake-on-LAN hosts over your local network.",
+                            fontSize = 13.sp,
+                            color = palette.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        HorizontalDivider(color = palette.border)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            "DEVELOPER & ARCHITECTURE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Crafted by RMediaTech",
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textPrimary,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "https://rmediatech.com",
+                            color = palette.primaryAccent,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            "100% Free • Zero Ads • Zero Cloud Relays • Pure Local Sovereign Engineering",
+                            fontSize = 11.sp,
+                            color = palette.textSecondary
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showAboutDialog = false }) {
+                        Text("Close", color = palette.primaryAccent, fontWeight = FontWeight.Bold)
                     }
                 }
             )

@@ -1,5 +1,5 @@
 # ==============================================================================
-# 📱 Sovereign Remote — Android Build & Deploy Automation Makefile
+# 📱 Argus — Android Build & Deploy Automation Makefile
 # ==============================================================================
 
 export ANDROID_HOME ?= $(HOME)/Android/Sdk
@@ -16,10 +16,10 @@ ADB_CMD := adb $(if $(DEVICE),-s $(DEVICE),)
 all: build
 
 help:
-	@echo "Sovereign Remote Build & Deployment Targets:"
+	@echo "Argus Sovereign Remote Build & Deployment Targets:"
 	@echo "  make build      - Compile debug APK using Gradle"
 	@echo "  make install    - Push and install debug APK to connected Android device"
-	@echo "  make run        - Launch Sovereign Remote on connected Android device"
+	@echo "  make run        - Launch Argus on connected Android device"
 	@echo "  make logs       - Stream device logcat logs"
 	@echo "  make devices    - List connected ADB devices (USB & Wi-Fi)"
 	@echo "  make clean      - Clean build caches and outputs"
