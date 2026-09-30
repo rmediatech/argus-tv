@@ -51,32 +51,43 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
     }
 
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val keycode = when (key) {
-                RemoteKey.POWER -> 26
-                RemoteKey.HOME -> 3
-                RemoteKey.BACK -> 4
-                RemoteKey.UP -> 19
-                RemoteKey.DOWN -> 20
-                RemoteKey.LEFT -> 21
-                RemoteKey.RIGHT -> 22
-                RemoteKey.SELECT -> 66
-                RemoteKey.VOLUME_UP -> 24
-                RemoteKey.VOLUME_DOWN -> 25
-                RemoteKey.MUTE -> 164
-                RemoteKey.PLAY_PAUSE -> 85
-                RemoteKey.REWIND -> 89
-                RemoteKey.FAST_FORWARD -> 90
-                RemoteKey.INFO -> 82 // Menu key
-            }
+        val keycode = when (key) {
+            RemoteKey.POWER -> 26
+            RemoteKey.HOME -> 3
+            RemoteKey.BACK -> 4
+            RemoteKey.UP -> 19
+            RemoteKey.DOWN -> 20
+            RemoteKey.LEFT -> 21
+            RemoteKey.RIGHT -> 22
+            RemoteKey.SELECT -> 66
+            RemoteKey.VOLUME_UP -> 24
+            RemoteKey.VOLUME_DOWN -> 25
+            RemoteKey.MUTE -> 164
+            RemoteKey.PLAY_PAUSE -> 85
+            RemoteKey.REWIND -> 89
+            RemoteKey.FAST_FORWARD -> 90
+            RemoteKey.INFO -> 82 // Menu key
+        }
 
+        // Try direct ADB command first
+        try {
             val dadb = getDadb(device.ipAddress, device.port)
             dadb.shell("input keyevent $keycode")
             Log.d("FireTvProtocol", "Successfully sent key $key ($keycode) to ${device.ipAddress}")
-            Result.success(Unit)
+            return@withContext Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("FireTvProtocol", "Error sending key $key to ${device.ipAddress}: ${e.message}", e)
+            Log.w("FireTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
             dadbCache.remove("${device.ipAddress}:${device.port}")
+
+            // If POWER key was pressed and ADB is unreachable, transmit Wake-on-LAN
+            if (key == RemoteKey.POWER) {
+                val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                if (!mac.isNullOrBlank()) {
+                    Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} is sleeping. Broadcasting WoL to $mac...")
+                    com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress)
+                    return@withContext Result.success(Unit)
+                }
+            }
             Result.failure(e)
         }
     }
@@ -104,6 +115,8 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
             }
             var model = "Amazon Fire OS"
             var name = "Fire TV Stick"
+            var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
+
             try {
                 val dadb = getDadb(ip, port)
                 val rawModel = dadb.shell("getprop ro.product.model").allOutput.trim()
@@ -118,6 +131,13 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
                     }
                     name = model
                 }
+
+                if (mac.isNullOrBlank()) {
+                    val linkOut = dadb.shell("ip link").allOutput
+                    val wlanMatch = Regex("""\bwlan0\b[^\n]*\n\s*link/ether\s+([0-9a-fA-F:]{17})""").find(linkOut)
+                    val ethMatch = Regex("""\beth0\b[^\n]*\n\s*link/ether\s+([0-9a-fA-F:]{17})""").find(linkOut)
+                    mac = wlanMatch?.groupValues?.get(1)?.lowercase() ?: ethMatch?.groupValues?.get(1)?.lowercase()
+                }
             } catch (_: Exception) {}
 
             RemoteDevice(
@@ -127,7 +147,8 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
                 port = port,
                 deviceType = DeviceType.FIRE_TV,
                 modelName = model,
-                isEthernet = false
+                isEthernet = false,
+                macAddress = mac
             )
         } catch (_: Exception) {
             null

@@ -151,7 +151,7 @@ fun RemoteScreen(
                             }
                             Text(
                                 text = currentDevice?.let { 
-                                    "${it.ipAddress} • " + (if (it.isEthernet) "Ethernet" else "Wi-Fi") + (it.modelName?.let { m -> " ($m)" } ?: "") 
+                                    "${it.ipAddress} • " + (if (it.isEthernet) "Ethernet" else "Wi-Fi") + (it.modelName?.let { m -> " ($m)" } ?: "") + (it.macAddress?.let { mac -> " • $mac" } ?: "")
                                 } ?: "Tap to select or scan",
                                 style = MaterialTheme.typography.labelSmall
                             )
@@ -407,7 +407,7 @@ fun RemoteScreen(
                                                     }
                                                 }
                                                 Text(
-                                                    "${device.ipAddress} • " + (if (device.isEthernet) "Ethernet" else "Wi-Fi") + (device.modelName?.let { " • $it" } ?: ""),
+                                                    "${device.ipAddress} • " + (if (device.isEthernet) "Ethernet" else "Wi-Fi") + (device.modelName?.let { " • $it" } ?: "") + (device.macAddress?.let { " • $it" } ?: ""),
                                                     style = MaterialTheme.typography.labelSmall
                                                 )
                                             }

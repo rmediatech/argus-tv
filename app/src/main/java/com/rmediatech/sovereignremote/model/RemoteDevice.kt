@@ -34,5 +34,6 @@ data class RemoteDevice(
     val port: Int,
     val deviceType: DeviceType,
     val modelName: String? = null,
-    val isEthernet: Boolean = false
+    val isEthernet: Boolean = false,
+    val macAddress: String? = null
 )

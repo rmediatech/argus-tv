@@ -21,8 +21,9 @@ class UniversalTvScanner(
         val protocols = registry.getProtocols()
 
         // 1. Gather candidate local IPs from ARP cache and active subnet ranges
+        val arpMappings = com.rmediatech.sovereignremote.net.WakeOnLan.getAllArpMappings()
         val candidateIps = mutableSetOf<String>()
-        candidateIps.addAll(readArpTable())
+        candidateIps.addAll(arpMappings.keys)
 
         val subnets = getActiveSubnetPrefixes()
         for (subnet in subnets) {
@@ -38,7 +39,10 @@ class UniversalTvScanner(
                     if (isPortReachable(ip, protocol.defaultPort, 150)) {
                         val device = protocol.probe(ip, protocol.defaultPort)
                         if (device != null) {
-                            foundDevices[ip] = device
+                            val enriched = if (device.macAddress.isNullOrBlank()) {
+                                device.copy(macAddress = arpMappings[ip] ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip))
+                            } else device
+                            foundDevices[ip] = enriched
                             break
                         }
                     }
@@ -56,14 +60,24 @@ class UniversalTvScanner(
             ssdpJob.await()
         }
 
-        foundDevices.values.toList().sortedBy { it.name }
+        val latestArp = com.rmediatech.sovereignremote.net.WakeOnLan.getAllArpMappings()
+        foundDevices.values.map { dev ->
+            if (dev.macAddress.isNullOrBlank()) {
+                dev.copy(macAddress = latestArp[dev.ipAddress])
+            } else {
+                dev
+            }
+        }.sortedBy { it.name }
     }
 
     suspend fun probeSpecificIp(ip: String): RemoteDevice? = withContext(Dispatchers.IO) {
+        val mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
         for (protocol in registry.getProtocols()) {
             if (isPortReachable(ip, protocol.defaultPort, 300)) {
                 val device = protocol.probe(ip, protocol.defaultPort)
-                if (device != null) return@withContext device
+                if (device != null) {
+                    return@withContext if (device.macAddress.isNullOrBlank()) device.copy(macAddress = mac) else device
+                }
             }
         }
 
@@ -73,7 +87,8 @@ class UniversalTvScanner(
             name = "Smart TV ($ip)",
             ipAddress = ip,
             port = 8008,
-            deviceType = com.rmediatech.sovereignremote.model.DeviceType.GENERIC
+            deviceType = com.rmediatech.sovereignremote.model.DeviceType.GENERIC,
+            macAddress = mac
         )
     }
 
@@ -137,22 +152,7 @@ class UniversalTvScanner(
     }
 
     private fun readArpTable(): Set<String> {
-        val ips = mutableSetOf<String>()
-        try {
-            BufferedReader(FileReader("/proc/net/arp")).use { reader ->
-                var line = reader.readLine() // Skip header
-                while (reader.readLine().also { line = it } != null) {
-                    val tokens = line?.split(Regex("\\s+")) ?: continue
-                    if (tokens.size >= 4 && tokens[3] != "00:00:00:00:00:00") {
-                        val ip = tokens[0]
-                        if (ip.startsWith("192.168.") || ip.startsWith("10.")) {
-                            ips.add(ip)
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return ips
+        return com.rmediatech.sovereignremote.net.WakeOnLan.getAllArpMappings().keys
     }
 
     private fun getActiveSubnetPrefixes(): Set<String> {
