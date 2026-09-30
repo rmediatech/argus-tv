@@ -24,10 +24,12 @@ class UniversalTvScanner(
         val candidateIps = mutableSetOf<String>()
         candidateIps.addAll(readArpTable())
 
-        val baseSubnet = getLocalSubnetPrefix()
-        for (i in 150..195) candidateIps.add("$baseSubnet.$i")
-        for (i in 2..30) candidateIps.add("$baseSubnet.$i")
-        for (i in 100..125) candidateIps.add("$baseSubnet.$i")
+        val subnets = getActiveSubnetPrefixes()
+        for (subnet in subnets) {
+            for (i in 1..254) {
+                candidateIps.add("$subnet.$i")
+            }
+        }
 
         // 2. Parallel Polymorphic Probing: Zero-overhead TCP pre-flight check before protocol probe
         val probeJobs = candidateIps.map { ip ->
@@ -153,7 +155,8 @@ class UniversalTvScanner(
         return ips
     }
 
-    private fun getLocalSubnetPrefix(): String {
+    private fun getActiveSubnetPrefixes(): Set<String> {
+        val subnets = mutableSetOf<String>()
         try {
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
             for (intf in interfaces) {
@@ -163,26 +166,33 @@ class UniversalTvScanner(
                         val hostAddress = addr.hostAddress ?: continue
                         val parts = hostAddress.split(".")
                         if (parts.size == 4) {
-                            return "${parts[0]}.${parts[1]}.${parts[2]}"
+                            subnets.add("${parts[0]}.${parts[1]}.${parts[2]}")
                         }
                     }
                 }
             }
         } catch (_: Exception) {}
 
-        return try {
-            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            val ipInt = wifi?.connectionInfo?.ipAddress ?: 0
-            if (ipInt != 0) {
-                String.format(
-                    "%d.%d.%d",
-                    ipInt and 0xff,
-                    ipInt shr 8 and 0xff,
-                    ipInt shr 16 and 0xff
-                )
-            } else "192.168.1"
-        } catch (_: Exception) {
-            "192.168.1"
+        if (subnets.isEmpty()) {
+            try {
+                val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                val ipInt = wifi?.connectionInfo?.ipAddress ?: 0
+                if (ipInt != 0) {
+                    subnets.add(
+                        String.format(
+                            "%d.%d.%d",
+                            ipInt and 0xff,
+                            ipInt shr 8 and 0xff,
+                            ipInt shr 16 and 0xff
+                        )
+                    )
+                }
+            } catch (_: Exception) {}
         }
+
+        if (subnets.isEmpty()) {
+            subnets.add("192.168.1")
+        }
+        return subnets
     }
 }

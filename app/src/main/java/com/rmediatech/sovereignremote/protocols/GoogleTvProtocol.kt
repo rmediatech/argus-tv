@@ -1,22 +1,57 @@
 package com.rmediatech.sovereignremote.protocols
 
+import android.content.Context
+import android.util.Log
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import dadb.AdbKeyPair
+import dadb.Dadb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class GoogleTvProtocol : SmartTvProtocol {
+class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
     override val deviceType: DeviceType = DeviceType.GOOGLE_TV
     override val defaultPort: Int = 8008
+
+    private val dadbCache = ConcurrentHashMap<String, Dadb>()
+
+    private val keyPair: AdbKeyPair by lazy {
+        val keyDir = File(context.filesDir, "adb")
+        keyDir.mkdirs()
+        val privKey = File(keyDir, "adbkey")
+        val pubKey = File(keyDir, "adbkey.pub")
+        if (!privKey.exists() || !pubKey.exists()) {
+            try {
+                context.assets.open("adb/adbkey").use { input ->
+                    FileOutputStream(privKey).use { output -> input.copyTo(output) }
+                }
+                context.assets.open("adb/adbkey.pub").use { input ->
+                    FileOutputStream(pubKey).use { output -> input.copyTo(output) }
+                }
+            } catch (e: Exception) {
+                AdbKeyPair.generate(privKey, pubKey)
+            }
+        }
+        AdbKeyPair.read(privKey, pubKey)
+    }
+
+    private fun getDadb(ip: String, port: Int): Dadb {
+        return dadbCache.computeIfAbsent("$ip:$port") {
+            Dadb.create(ip, port, keyPair)
+        }
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(1, TimeUnit.SECONDS)
@@ -25,38 +60,50 @@ class GoogleTvProtocol : SmartTvProtocol {
         .build()
 
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            // First attempt: Check if ADB port 5555 is reachable for direct zero-latency control
-            var adbSent = false
-            if (isPortOpen(device.ipAddress, 5555, 300)) {
-                // Future: Native ADB key injection
-            }
-
-            // Second attempt: Google Cast DIAL endpoints on port 8008
-            val dialApp = when (key) {
-                RemoteKey.HOME -> "YouTube" // Default home landing
-                RemoteKey.PLAY_PAUSE -> null
-                else -> null
-            }
-
-            if (dialApp != null) {
-                val url = "http://${device.ipAddress}:8008/apps/$dialApp"
-                val request = Request.Builder().url(url).post("".toRequestBody()).build()
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful || response.code == 201) return@withContext Result.success(Unit)
-                }
-            }
-
-            // DIAL Volume/Mute endpoint support
-            if (key == RemoteKey.VOLUME_UP || key == RemoteKey.VOLUME_DOWN || key == RemoteKey.MUTE) {
-                // Google Cast Volume REST
-                Result.success(Unit)
-            } else {
-                Result.success(Unit)
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+        val keycode = when (key) {
+            RemoteKey.POWER -> 26
+            RemoteKey.HOME -> 3
+            RemoteKey.BACK -> 4
+            RemoteKey.UP -> 19
+            RemoteKey.DOWN -> 20
+            RemoteKey.LEFT -> 21
+            RemoteKey.RIGHT -> 22
+            RemoteKey.SELECT -> 66
+            RemoteKey.VOLUME_UP -> 24
+            RemoteKey.VOLUME_DOWN -> 25
+            RemoteKey.MUTE -> 164
+            RemoteKey.PLAY_PAUSE -> 85
+            RemoteKey.REWIND -> 89
+            RemoteKey.FAST_FORWARD -> 90
+            RemoteKey.INFO -> 82
         }
+
+        // 1. Direct zero-latency ADB injection if port 5555 is open
+        if (isPortOpen(device.ipAddress, 5555, 250)) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+                dadb.shell("input keyevent $keycode")
+                Log.d("GoogleTvProtocol", "Sent ADB keyevent $keycode to ${device.ipAddress}")
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                Log.w("GoogleTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
+                dadbCache.remove("${device.ipAddress}:5555")
+            }
+        }
+
+        // 2. Google Cast DIAL fallback for Home/App launches
+        try {
+            if (key == RemoteKey.HOME) {
+                launchApp(device, "YouTube")
+                return@withContext Result.success(Unit)
+            }
+        } catch (_: Exception) {}
+
+        if (key == RemoteKey.POWER) {
+            return@withContext Result.failure(IOException("Google TV power off requires ADB or Remote v2 authorization on TV"))
+        }
+
+        Result.success(Unit)
     }
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> = withContext(Dispatchers.IO) {

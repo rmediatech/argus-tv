@@ -10,7 +10,7 @@ class TvProtocolRegistry(private val context: Context) {
 
     init {
         register(RokuProtocol())
-        register(GoogleTvProtocol())
+        register(GoogleTvProtocol(context))
         register(FireTvProtocol(context))
     }
 
