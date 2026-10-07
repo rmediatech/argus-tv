@@ -268,7 +268,7 @@ fun RemoteScreen(
                             Text(
                                 text = currentDevice?.let { 
                                     "${it.ipAddress} • " + (if (it.isEthernet) "Ethernet" else "Wi-Fi") + (it.modelName?.let { m -> " ($m)" } ?: "") + ackText
-                                } ?: (if (activeSubnetPrefix.isNullOrBlank()) "Tap to select or scan" else "Wi-Fi: $activeSubnetPrefix.* • Tap to scan"),
+                                } ?: (if (isScanning) "Searching Wi-Fi for TVs..." else "Tap to scan or select TV"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (lastAckLatencyMs == -1L) Color(0xFFFF1744) else palette.textSecondary
                             )
@@ -445,7 +445,7 @@ fun RemoteScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "CURRENT WI-FI" + (if (activeSubnetPrefix.isNullOrBlank()) "" else " ($activeSubnetPrefix.*)"),
+                                text = "DEVICES ON THIS WI-FI",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = palette.primaryAccent
@@ -554,7 +554,7 @@ fun RemoteScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Saved from Other Networks (${otherDevices.size})",
+                                    text = "Saved Devices from Other Locations (${otherDevices.size})",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = palette.textSecondary
                                 )
@@ -592,7 +592,12 @@ fun RemoteScreen(
                                                 }
                                         ) {
                                             Text(device.name, style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
-                                            Text("${device.ipAddress} (${device.effectiveSubnet}.*)", style = MaterialTheme.typography.labelSmall, color = palette.textSecondary, fontSize = 9.sp)
+                                            Text(
+                                                if (device.modelName != null) "${device.deviceType.displayName} • ${device.modelName}" else "${device.deviceType.displayName} • Saved Location",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = palette.textSecondary,
+                                                fontSize = 9.sp
+                                            )
                                         }
                                         IconButton(
                                             onClick = { onDeleteDevice(device) },
