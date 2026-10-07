@@ -159,31 +159,53 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
                 if (response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
                     val json = JSONObject(body)
-                    var name = json.optString("name", "Google TV ($ip)")
+                    val rawName = json.optString("name").ifBlank { json.optString("device_name", "") }
                     val bssid = json.optString("bssid", ip)
-                    val model = json.optString("build_version", "Google TV")
                     val isEthernet = json.optBoolean("ethernet_connected", false)
 
-                    // Smart brand attribution
-                    if (name.contains("50Q550", ignoreCase = true)) {
-                        name = "TCL 50Q550G (QLED)"
-                    } else if (name.contains("Rick", ignoreCase = true)) {
-                        name = "Rick's TV (Hisense)"
+                    // Dynamic manufacturer & model discovery
+                    val deviceInfo = json.optJSONObject("device_info")
+                    val manufacturer = deviceInfo?.optString("manufacturer").orEmpty().ifBlank {
+                        json.optString("manufacturer", "")
+                    }
+                    val modelNameFromEureka = deviceInfo?.optString("model_name").orEmpty().ifBlank {
+                        json.optString("model_name", "")
                     }
 
-                    // Extract MAC address from ARP or active ADB interface
+                    val displayName = when {
+                        rawName.isNotBlank() -> rawName
+                        modelNameFromEureka.isNotBlank() -> "$modelNameFromEureka ($ip)"
+                        else -> "Google TV ($ip)"
+                    }
+
+                    val resolvedModel = when {
+                        manufacturer.isNotBlank() && modelNameFromEureka.isNotBlank() -> "$manufacturer $modelNameFromEureka"
+                        modelNameFromEureka.isNotBlank() -> modelNameFromEureka
+                        manufacturer.isNotBlank() -> "$manufacturer Google TV"
+                        displayName.contains("TCL", ignoreCase = true) -> "TCL Google TV"
+                        displayName.contains("Hisense", ignoreCase = true) -> "Hisense Google TV"
+                        displayName.contains("Sony", ignoreCase = true) -> "Sony BRAVIA"
+                        displayName.contains("Chromecast", ignoreCase = true) -> "Chromecast"
+                        displayName.contains("NVIDIA", ignoreCase = true) || displayName.contains("Shield", ignoreCase = true) -> "NVIDIA SHIELD"
+                        else -> "Google / Android TV"
+                    }
+
+                    // Extract MAC address from ARP, BSSID (if standard MAC format), or active ADB interface
                     var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
+                    if (mac.isNullOrBlank() && bssid.matches(Regex("""([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}"""))) {
+                        mac = bssid.lowercase()
+                    }
                     if (mac.isNullOrBlank() && isPortOpen(ip, 5555, 200)) {
                         mac = extractMacFromAdb(ip, 5555)
                     }
 
                     RemoteDevice(
                         id = "googletv_$bssid",
-                        name = name,
+                        name = displayName,
                         ipAddress = ip,
                         port = 8008,
                         deviceType = DeviceType.GOOGLE_TV,
-                        modelName = if (name.contains("TCL")) "TCL Google TV" else "Hisense Google TV",
+                        modelName = resolvedModel,
                         isEthernet = isEthernet,
                         macAddress = mac
                     )

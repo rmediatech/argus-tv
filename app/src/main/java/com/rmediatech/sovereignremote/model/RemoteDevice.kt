@@ -42,5 +42,10 @@ data class RemoteDevice(
     val deviceType: DeviceType,
     val modelName: String? = null,
     val isEthernet: Boolean = false,
-    val macAddress: String? = null
-)
+    val macAddress: String? = null,
+    val subnetPrefix: String? = null
+) {
+    val effectiveSubnet: String
+        get() = subnetPrefix?.takeIf { it.isNotBlank() } ?: ipAddress.substringBeforeLast(".", "")
+}
+

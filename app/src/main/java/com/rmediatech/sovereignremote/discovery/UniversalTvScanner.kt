@@ -2,62 +2,91 @@ package com.rmediatech.sovereignremote.discovery
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.util.Log
+import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
+import com.rmediatech.sovereignremote.net.NetworkEnvironmentManager
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import kotlinx.coroutines.*
-import java.io.BufferedReader
-import java.io.FileReader
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.SocketTimeoutException
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Universal Sovereign Smart TV & Media Device Scanner:
+ * Polymorphic multi-protocol discovery utilizing targeted SSDP multicast, directed subnet broadcast,
+ * and high-throughput concurrent TCP port sweeps across active LAN subnets.
+ */
 class UniversalTvScanner(
     private val context: Context,
     private val registry: TvProtocolRegistry
 ) {
-    suspend fun discoverAll(timeoutMs: Int = 3500): List<RemoteDevice> = withContext(Dispatchers.IO) {
-        val foundDevices = java.util.concurrent.ConcurrentHashMap<String, RemoteDevice>()
-        val protocols = registry.getProtocols()
+    companion object {
+        private const val TAG = "UniversalTvScanner"
+    }
 
-        // 1. Gather candidate local IPs from ARP cache and active subnet ranges
+    suspend fun discoverAll(
+        timeoutMs: Int = 4500,
+        onDeviceFound: ((RemoteDevice) -> Unit)? = null
+    ): List<RemoteDevice> = withContext(Dispatchers.IO) {
+        val foundDevices = ConcurrentHashMap<String, RemoteDevice>()
         val arpMappings = com.rmediatech.sovereignremote.net.WakeOnLan.getAllArpMappings()
-        val candidateIps = mutableSetOf<String>()
+
+        // 1. Resolve active network subnet environment
+        val activeSubnetInfo = NetworkEnvironmentManager.getActiveSubnetInfo(context)
+        val candidateIps = NetworkEnvironmentManager.generateCandidateIps(activeSubnetInfo).toMutableSet()
         candidateIps.addAll(arpMappings.keys)
 
-        val subnets = getActiveSubnetPrefixes()
-        for (subnet in subnets) {
-            for (i in 1..254) {
-                candidateIps.add("$subnet.$i")
+        fun recordDevice(device: RemoteDevice) {
+            val existing = foundDevices[device.ipAddress]
+            if (existing == null || existing.deviceType == DeviceType.GENERIC) {
+                val enriched = if (device.macAddress.isNullOrBlank()) {
+                    device.copy(macAddress = arpMappings[device.ipAddress] ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress))
+                } else device
+                foundDevices[device.ipAddress] = enriched
+                onDeviceFound?.invoke(enriched)
             }
         }
 
-        // 2. Parallel Polymorphic Probing: Zero-overhead TCP pre-flight check before protocol probe
+        // 2. High-speed Multi-Target SSDP Multicast & Subnet Broadcast
+        val ssdpJob = launch {
+            discoverSsdp(
+                timeoutMs = (timeoutMs * 0.85).toInt(),
+                broadcastIp = activeSubnetInfo?.broadcastIp,
+                onDeviceDiscovered = { dev -> recordDevice(dev) }
+            )
+        }
+
+        // 3. High-throughput bounded TCP sweep (Semaphore bounds concurrency to avoid thread starvation)
+        val concurrencyLimit = Semaphore(50)
         val probeJobs = candidateIps.map { ip ->
-            async {
-                for (protocol in protocols) {
-                    if (isPortReachable(ip, protocol.defaultPort, 150)) {
-                        val device = protocol.probe(ip, protocol.defaultPort)
-                        if (device != null) {
-                            val enriched = if (device.macAddress.isNullOrBlank()) {
-                                device.copy(macAddress = arpMappings[ip] ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip))
-                            } else device
-                            foundDevices[ip] = enriched
-                            break
+            launch {
+                concurrencyLimit.withPermit {
+                    // Check primary smart TV ports: Roku (8060), Google TV (8008), Fire TV (5555), Samsung (8001)
+                    val protocols = registry.getProtocols()
+                    for (protocol in protocols) {
+                        if (foundDevices.containsKey(ip)) break
+                        if (isPortReachable(ip, protocol.defaultPort, 140)) {
+                            val device = protocol.probe(ip, protocol.defaultPort)
+                            if (device != null) {
+                                recordDevice(device)
+                                break
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 3. Roku SSDP Multicast Scanner on Port 1900
-        val ssdpJob = async {
-            discoverRokuSsdp(timeoutMs = 2000, foundDevices)
-        }
-
         withTimeoutOrNull(timeoutMs.toLong()) {
-            probeJobs.awaitAll()
-            ssdpJob.await()
+            probeJobs.joinAll()
+            ssdpJob.join()
         }
 
         val latestArp = com.rmediatech.sovereignremote.net.WakeOnLan.getAllArpMappings()
@@ -87,15 +116,15 @@ class UniversalTvScanner(
             name = "Smart TV ($ip)",
             ipAddress = ip,
             port = 8008,
-            deviceType = com.rmediatech.sovereignremote.model.DeviceType.GENERIC,
+            deviceType = DeviceType.GENERIC,
             macAddress = mac
         )
     }
 
     private fun isPortReachable(ip: String, port: Int, timeoutMs: Int): Boolean {
         return try {
-            java.net.Socket().use { socket ->
-                socket.connect(java.net.InetSocketAddress(ip, port), timeoutMs)
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(ip, port), timeoutMs)
                 true
             }
         } catch (_: Exception) {
@@ -103,96 +132,81 @@ class UniversalTvScanner(
         }
     }
 
-    private fun discoverRokuSsdp(timeoutMs: Int, foundDevices: MutableMap<String, RemoteDevice>) {
+    private suspend fun discoverSsdp(
+        timeoutMs: Int,
+        broadcastIp: String?,
+        onDeviceDiscovered: (RemoteDevice) -> Unit
+    ) = withContext(Dispatchers.IO) {
         var multicastLock: WifiManager.MulticastLock? = null
         try {
             val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            multicastLock = wifi?.createMulticastLock("universal_ssdp_lock")?.apply {
+            multicastLock = wifi?.createMulticastLock("universal_tv_ssdp_lock")?.apply {
                 setReferenceCounted(true)
                 acquire()
             }
 
             DatagramSocket().use { socket ->
-                socket.soTimeout = timeoutMs
-                val mSearch = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: roku:ecp\r\nMX: 2\r\n\r\n".toByteArray(Charsets.UTF_8)
-                val packet = DatagramPacket(mSearch, mSearch.size, InetAddress.getByName("239.255.255.250"), 1900)
-                socket.send(packet)
-                socket.send(packet)
+                socket.broadcast = true
+                socket.soTimeout = 800
+
+                val targets = mutableListOf<InetAddress>()
+                try { targets.add(InetAddress.getByName("239.255.255.250")) } catch (_: Exception) {}
+                if (!broadcastIp.isNullOrBlank()) {
+                    try { targets.add(InetAddress.getByName(broadcastIp)) } catch (_: Exception) {}
+                }
+
+                val searchQueries = listOf(
+                    "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: roku:ecp\r\nMX: 2\r\n\r\n",
+                    "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: urn:dial-multiscreen-org:service:dial:1\r\nMX: 2\r\n\r\n",
+                    "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: ssdp:all\r\nMX: 2\r\n\r\n",
+                    "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: urn:schemas-upnp-org:device:MediaRenderer:1\r\nMX: 2\r\n\r\n"
+                )
+
+                // Transmit SSDP search requests
+                for (query in searchQueries) {
+                    val bytes = query.toByteArray(Charsets.UTF_8)
+                    for (target in targets) {
+                        try {
+                            val packet = DatagramPacket(bytes, bytes.size, target, 1900)
+                            socket.send(packet)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "SSDP transmission failed to $target: ${e.message}")
+                        }
+                    }
+                }
 
                 val buffer = ByteArray(2048)
                 val responsePacket = DatagramPacket(buffer, buffer.size)
                 val startTime = System.currentTimeMillis()
 
-                while (System.currentTimeMillis() - startTime < timeoutMs) {
+                while (System.currentTimeMillis() - startTime < timeoutMs && isActive) {
                     try {
                         socket.receive(responsePacket)
                         val ip = responsePacket.address.hostAddress ?: continue
-                        if (!foundDevices.containsKey(ip)) {
-                            val responseStr = String(responsePacket.data, 0, responsePacket.length, Charsets.UTF_8)
-                            if (responseStr.contains("roku:ecp", ignoreCase = true)) {
-                                runBlocking {
-                                    val roku = registry.get(com.rmediatech.sovereignremote.model.DeviceType.ROKU).probe(ip, 8060)
-                                    if (roku != null) {
-                                        synchronized(foundDevices) {
-                                            foundDevices[ip] = roku
-                                        }
-                                    }
-                                }
-                            }
+                        val responseStr = String(responsePacket.data, 0, responsePacket.length, Charsets.UTF_8)
+
+                        if (responseStr.contains("roku:ecp", ignoreCase = true) || responseStr.contains(":8060", ignoreCase = true)) {
+                            val roku = registry.get(DeviceType.ROKU).probe(ip, 8060)
+                            if (roku != null) onDeviceDiscovered(roku)
+                        } else if (responseStr.contains("dial", ignoreCase = true) || responseStr.contains(":8008", ignoreCase = true)) {
+                            val googleTv = registry.get(DeviceType.GOOGLE_TV).probe(ip, 8008)
+                            if (googleTv != null) onDeviceDiscovered(googleTv)
+                        } else if (responseStr.contains("Samsung", ignoreCase = true) || responseStr.contains(":8001", ignoreCase = true)) {
+                            val tv = probeSpecificIp(ip)
+                            if (tv != null) onDeviceDiscovered(tv)
                         }
                     } catch (_: SocketTimeoutException) {
+                        // Socket read timed out, continue receiving until overall deadline
+                    } catch (e: Exception) {
+                        Log.w(TAG, "SSDP receive loop error: ${e.message}")
                         break
                     }
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "SSDP scanner error: ${e.message}")
         } finally {
             try { multicastLock?.release() } catch (_: Exception) {}
         }
-    }
-
-    private fun readArpTable(): Set<String> {
-        return com.rmediatech.sovereignremote.net.WakeOnLan.getAllArpMappings().keys
-    }
-
-    private fun getActiveSubnetPrefixes(): Set<String> {
-        val subnets = mutableSetOf<String>()
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            for (intf in interfaces) {
-                if (intf.isLoopback || !intf.isUp) continue
-                for (addr in intf.inetAddresses) {
-                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
-                        val hostAddress = addr.hostAddress ?: continue
-                        val parts = hostAddress.split(".")
-                        if (parts.size == 4) {
-                            subnets.add("${parts[0]}.${parts[1]}.${parts[2]}")
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-
-        if (subnets.isEmpty()) {
-            try {
-                val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-                val ipInt = wifi?.connectionInfo?.ipAddress ?: 0
-                if (ipInt != 0) {
-                    subnets.add(
-                        String.format(
-                            "%d.%d.%d",
-                            ipInt and 0xff,
-                            ipInt shr 8 and 0xff,
-                            ipInt shr 16 and 0xff
-                        )
-                    )
-                }
-            } catch (_: Exception) {}
-        }
-
-        if (subnets.isEmpty()) {
-            subnets.add("192.168.1")
-        }
-        return subnets
     }
 }

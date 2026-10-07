@@ -10,13 +10,14 @@ class DeviceSerializerTest {
         val originalDevices = listOf(
             RemoteDevice(
                 id = "googletv_001",
-                name = "Rick's TV (Hisense)",
+                name = "Living Room TV (Hisense)",
                 ipAddress = "192.168.1.151",
                 port = 8008,
                 deviceType = DeviceType.GOOGLE_TV,
                 modelName = "Hisense Google TV",
                 isEthernet = true,
-                macAddress = "88:b8:63:08:df:00"
+                macAddress = "88:b8:63:08:df:00",
+                subnetPrefix = "192.168.1"
             ),
             RemoteDevice(
                 id = "firetv_002",
@@ -26,7 +27,8 @@ class DeviceSerializerTest {
                 deviceType = DeviceType.FIRE_TV,
                 modelName = "Fire TV Stick 4K Max",
                 isEthernet = false,
-                macAddress = "68:f6:3b:b4:5c:14"
+                macAddress = "68:f6:3b:b4:5c:14",
+                subnetPrefix = "192.168.1"
             )
         )
 
@@ -38,9 +40,11 @@ class DeviceSerializerTest {
         assertEquals(originalDevices[0].macAddress, deserialized[0].macAddress)
         assertEquals(originalDevices[0].deviceType, deserialized[0].deviceType)
         assertEquals(originalDevices[0].isEthernet, deserialized[0].isEthernet)
+        assertEquals("192.168.1", deserialized[0].subnetPrefix)
 
         assertEquals(originalDevices[1].ipAddress, deserialized[1].ipAddress)
         assertEquals(originalDevices[1].macAddress, deserialized[1].macAddress)
+        assertEquals("192.168.1", deserialized[1].subnetPrefix)
     }
 
     @Test
@@ -52,6 +56,7 @@ class DeviceSerializerTest {
         assertEquals(1, devices.size)
         assertEquals("192.168.1.120", devices[0].ipAddress)
         assertNull("Missing macAddress in legacy JSON should deserialize as null without crashing", devices[0].macAddress)
+        assertEquals("192.168.1", devices[0].effectiveSubnet)
     }
 
     @Test
@@ -59,11 +64,12 @@ class DeviceSerializerTest {
         val cached = listOf(
             RemoteDevice(
                 id = "tv_1",
-                name = "Rick's TV",
+                name = "Master Bedroom TV",
                 ipAddress = "192.168.1.151",
                 port = 8008,
                 deviceType = DeviceType.GOOGLE_TV,
-                macAddress = "88:b8:63:08:df:00"
+                macAddress = "88:b8:63:08:df:00",
+                subnetPrefix = "192.168.1"
             )
         )
 
@@ -75,14 +81,16 @@ class DeviceSerializerTest {
                 ipAddress = "192.168.1.151",
                 port = 8008,
                 deviceType = DeviceType.GOOGLE_TV,
-                macAddress = null
+                macAddress = null,
+                subnetPrefix = "192.168.1"
             )
         )
 
         val merged = DeviceSerializer.merge(cached, fresh)
         assertEquals(1, merged.size)
         assertEquals("88:b8:63:08:df:00", merged[0].macAddress)
-        assertEquals("Rick's TV", merged[0].name)
+        assertEquals("Master Bedroom TV", merged[0].name)
+        assertEquals("192.168.1", merged[0].subnetPrefix)
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import com.rmediatech.sovereignremote.net.DeviceLivenessTracker
+import com.rmediatech.sovereignremote.net.NetworkEnvironmentManager
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import com.rmediatech.sovereignremote.ui.components.RemoteScreen
 import com.rmediatech.sovereignremote.ui.theme.SovereignRemoteTheme
@@ -43,6 +44,11 @@ class MainActivity : ComponentActivity() {
             }
 
             SovereignRemoteTheme(preset = currentTheme) {
+                var activeSubnetInfo by remember {
+                    mutableStateOf(NetworkEnvironmentManager.getActiveSubnetInfo(applicationContext))
+                }
+                val currentSubnetPrefix = activeSubnetInfo?.subnetPrefix ?: ""
+
                 val initialDevices = remember { DeviceSerializer.deserialize(prefs.getString("saved_devices_json", null)) }
                 var discoveredDevices by remember { mutableStateOf(initialDevices) }
                 var isScanning by remember { mutableStateOf(false) }
@@ -52,11 +58,15 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val lastIp = prefs.getString("last_selected_ip", null)
+                // Filter initial candidate devices to the currently active subnet
+                val currentNetworkEligible = initialDevices.filter {
+                    !hiddenIps.contains(it.ipAddress) && (currentSubnetPrefix.isBlank() || it.effectiveSubnet == currentSubnetPrefix)
+                }
+
                 var currentDevice by remember {
                     mutableStateOf(
-                        initialDevices.find { it.ipAddress == lastIp }
-                            ?: initialDevices.find { !hiddenIps.contains(it.ipAddress) }
-                            ?: initialDevices.firstOrNull()
+                        currentNetworkEligible.find { it.ipAddress == lastIp }
+                            ?: currentNetworkEligible.firstOrNull()
                     )
                 }
 
@@ -69,8 +79,28 @@ class MainActivity : ComponentActivity() {
                     hiddenIps = updated
                     prefs.edit().putStringSet("hidden_device_ips", updated).apply()
                     if (currentDevice?.ipAddress == ip) {
-                        currentDevice = discoveredDevices.find { !updated.contains(it.ipAddress) }
+                        currentDevice = discoveredDevices.find {
+                            !updated.contains(it.ipAddress) && (currentSubnetPrefix.isBlank() || it.effectiveSubnet == currentSubnetPrefix)
+                        }
                     }
+                }
+
+                fun deleteDevice(device: RemoteDevice) {
+                    val updated = discoveredDevices.filter { it.ipAddress != device.ipAddress }
+                    discoveredDevices = updated
+                    prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
+                    if (currentDevice?.ipAddress == device.ipAddress) {
+                        currentDevice = updated.find {
+                            !hiddenIps.contains(it.ipAddress) && (currentSubnetPrefix.isBlank() || it.effectiveSubnet == currentSubnetPrefix)
+                        }
+                    }
+                }
+
+                fun clearOtherNetworks() {
+                    if (currentSubnetPrefix.isBlank()) return
+                    val updated = discoveredDevices.filter { it.effectiveSubnet == currentSubnetPrefix }
+                    discoveredDevices = updated
+                    prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
                 }
 
                 fun selectDevice(device: RemoteDevice) {
@@ -97,20 +127,40 @@ class MainActivity : ComponentActivity() {
                 fun runDiscovery() {
                     if (isScanning) return
                     isScanning = true
+                    val freshNetInfo = NetworkEnvironmentManager.getActiveSubnetInfo(applicationContext)
+                    activeSubnetInfo = freshNetInfo
+                    val activePrefix = freshNetInfo?.subnetPrefix ?: ""
+
                     lifecycleScope.launch {
                         try {
-                            val results = scanner.discoverAll(timeoutMs = 3500)
+                            val results = scanner.discoverAll(
+                                timeoutMs = 4500,
+                                onDeviceFound = { liveDev ->
+                                    // Real-time progressive UI update as devices respond
+                                    runOnUiThread {
+                                        val updated = DeviceSerializer.merge(discoveredDevices, listOf(liveDev))
+                                        discoveredDevices = updated
+                                        prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
+                                        if (currentDevice == null && (activePrefix.isBlank() || liveDev.effectiveSubnet == activePrefix)) {
+                                            currentDevice = liveDev
+                                            prefs.edit().putString("last_selected_ip", liveDev.ipAddress).apply()
+                                        }
+                                    }
+                                }
+                            )
                             val merged = DeviceSerializer.merge(discoveredDevices, results)
                             discoveredDevices = merged
                             prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
 
+                            val eligible = merged.filter {
+                                !hiddenIps.contains(it.ipAddress) && (activePrefix.isBlank() || it.effectiveSubnet == activePrefix)
+                            }
                             val prefIp = prefs.getString("last_selected_ip", null)
-                            val eligible = merged.filter { !hiddenIps.contains(it.ipAddress) }
                             val preferred = eligible.find { it.ipAddress == prefIp }
-                                ?: eligible.find { it.deviceType == DeviceType.FIRE_TV }
+                                ?: eligible.find { it.deviceType == DeviceType.FIRE_TV || it.deviceType == DeviceType.GOOGLE_TV || it.deviceType == DeviceType.ROKU }
                                 ?: eligible.firstOrNull()
 
-                            if (preferred != null && (currentDevice == null || currentDevice?.ipAddress == prefIp)) {
+                            if (preferred != null && (currentDevice == null || (activePrefix.isNotBlank() && currentDevice?.effectiveSubnet != activePrefix))) {
                                 currentDevice = preferred
                             }
                         } catch (e: Exception) {
@@ -212,6 +262,7 @@ class MainActivity : ComponentActivity() {
                     currentDevice = currentDevice,
                     discoveredDevices = discoveredDevices,
                     hiddenIps = hiddenIps,
+                    activeSubnetPrefix = currentSubnetPrefix.takeIf { it.isNotBlank() },
                     isScanning = isScanning,
                     livenessState = livenessState,
                     lastAckLatencyMs = lastAckLatencyMs,
@@ -221,6 +272,8 @@ class MainActivity : ComponentActivity() {
                     onScanRequested = { runDiscovery() },
                     onSelectDevice = { selectDevice(it) },
                     onToggleHideDevice = { toggleHideDevice(it) },
+                    onDeleteDevice = { deleteDevice(it) },
+                    onClearOtherNetworks = { clearOtherNetworks() },
                     onManualIpAdded = { addManualIp(it) },
                     onSendKey = { sendKey(it) }
                 )

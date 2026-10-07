@@ -63,15 +63,26 @@ class RokuProtocol : SmartTvProtocol {
                     val xml = response.body?.string().orEmpty()
                     val nameMatch = Regex("<friendly-device-name>(.*?)</friendly-device-name>").find(xml)
                     val modelMatch = Regex("<model-name>(.*?)</model-name>").find(xml)
-                    val name = nameMatch?.groupValues?.get(1) ?: "Roku TV"
+                    val wifiMacMatch = Regex("<wifi-mac>(.*?)</wifi-mac>").find(xml)
+                    val ethMacMatch = Regex("<ethernet-mac>(.*?)</ethernet-mac>").find(xml)
+
+                    val isEthernet = ethMacMatch != null && ethMacMatch.groupValues[1].isNotBlank()
+                    val mac = ethMacMatch?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+                        ?: wifiMacMatch?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+                        ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
+
+                    val name = nameMatch?.groupValues?.get(1)?.ifBlank { "Roku Device" } ?: "Roku Device"
                     val model = modelMatch?.groupValues?.get(1)
+
                     RemoteDevice(
                         id = "roku_$ip",
                         name = name,
                         ipAddress = ip,
                         port = port,
                         deviceType = DeviceType.ROKU,
-                        modelName = model
+                        modelName = model?.let { "Roku $it" } ?: "Roku",
+                        isEthernet = isEthernet,
+                        macAddress = mac?.lowercase()
                     )
                 } else null
             }
