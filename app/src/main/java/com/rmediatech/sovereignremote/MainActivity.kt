@@ -27,6 +27,12 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var registry: TvProtocolRegistry
     private lateinit var scanner: UniversalTvScanner
+    private var onResumeCallback: (() -> Unit)? = null
+
+    override fun onResume() {
+        super.onResume()
+        onResumeCallback?.invoke()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -153,6 +159,11 @@ class MainActivity : ComponentActivity() {
                     activeSubnetInfo = freshNetInfo
                     val activePrefix = freshNetInfo?.subnetPrefix ?: ""
 
+                    // Immediately detach foreign subnet device so UI never lingers on another network's TV
+                    if (currentDevice != null && activePrefix.isNotBlank() && currentDevice?.effectiveSubnet != activePrefix) {
+                        currentDevice = null
+                    }
+
                     lifecycleScope.launch {
                         try {
                             val results = scanner.discoverAll(
@@ -275,6 +286,14 @@ class MainActivity : ComponentActivity() {
                         currentDevice = device
                         prefs.edit().putString("last_selected_ip", device.ipAddress).apply()
                         Toast.makeText(this@MainActivity, "Added TV ($ip)", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                // Dynamically re-check Wi-Fi context when activity returns to foreground
+                onResumeCallback = {
+                    val fresh = NetworkEnvironmentManager.getActiveSubnetInfo(applicationContext)
+                    if (fresh?.subnetPrefix != activeSubnetInfo?.subnetPrefix) {
+                        runDiscovery()
                     }
                 }
 
