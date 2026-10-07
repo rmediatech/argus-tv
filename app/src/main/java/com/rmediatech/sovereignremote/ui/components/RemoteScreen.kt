@@ -43,6 +43,7 @@ fun RemoteScreen(
     onToggleHideDevice: (String) -> Unit = {},
     onDeleteDevice: (RemoteDevice) -> Unit = {},
     onClearOtherNetworks: () -> Unit = {},
+    onClearAllDevices: () -> Unit = {},
     onManualIpAdded: (String) -> Unit,
     onSendKey: (RemoteKey) -> Unit
 ) {
@@ -648,8 +649,21 @@ fun RemoteScreen(
                                             Text(device.name, style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                                             Text(device.ipAddress, style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
                                         }
-                                        TextButton(onClick = { onToggleHideDevice(device.ipAddress) }) {
-                                            Text("Unhide", fontSize = 11.sp, color = palette.primaryAccent)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { onDeleteDevice(device) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.DeleteOutline,
+                                                    contentDescription = "Remove Device",
+                                                    tint = Color(0xFFFF5252),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                            TextButton(onClick = { onToggleHideDevice(device.ipAddress) }) {
+                                                Text("Unhide", fontSize = 11.sp, color = palette.primaryAccent)
+                                            }
                                         }
                                     }
                                 }
@@ -675,8 +689,19 @@ fun RemoteScreen(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDeviceDialog = false }) {
-                        Text("Close", color = palette.textSecondary)
+                    Row {
+                        if (discoveredDevices.isNotEmpty()) {
+                            TextButton(onClick = {
+                                onClearAllDevices()
+                                showDeviceDialog = false
+                            }) {
+                                Text("Clear All", color = Color(0xFFFF5252))
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        TextButton(onClick = { showDeviceDialog = false }) {
+                            Text("Close", color = palette.textSecondary)
+                        }
                     }
                 }
             )

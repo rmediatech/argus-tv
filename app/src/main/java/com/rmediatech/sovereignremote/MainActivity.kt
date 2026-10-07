@@ -89,11 +89,25 @@ class MainActivity : ComponentActivity() {
                     val updated = discoveredDevices.filter { it.ipAddress != device.ipAddress }
                     discoveredDevices = updated
                     prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
+
+                    if (hiddenIps.contains(device.ipAddress)) {
+                        val updatedHidden = hiddenIps - device.ipAddress
+                        hiddenIps = updatedHidden
+                        prefs.edit().putStringSet("hidden_device_ips", updatedHidden).apply()
+                    }
+
                     if (currentDevice?.ipAddress == device.ipAddress) {
-                        currentDevice = updated.find {
+                        val nextDevice = updated.find {
                             !hiddenIps.contains(it.ipAddress) && (currentSubnetPrefix.isBlank() || it.effectiveSubnet == currentSubnetPrefix)
                         }
+                        currentDevice = nextDevice
+                        if (nextDevice != null) {
+                            prefs.edit().putString("last_selected_ip", nextDevice.ipAddress).apply()
+                        } else {
+                            prefs.edit().remove("last_selected_ip").apply()
+                        }
                     }
+                    Toast.makeText(this@MainActivity, "Removed ${device.name}", Toast.LENGTH_SHORT).show()
                 }
 
                 fun clearOtherNetworks() {
@@ -101,6 +115,14 @@ class MainActivity : ComponentActivity() {
                     val updated = discoveredDevices.filter { it.effectiveSubnet == currentSubnetPrefix }
                     discoveredDevices = updated
                     prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
+                    Toast.makeText(this@MainActivity, "Cleared other network devices", Toast.LENGTH_SHORT).show()
+                }
+
+                fun clearAllDevices() {
+                    discoveredDevices = emptyList()
+                    currentDevice = null
+                    prefs.edit().remove("saved_devices_json").remove("last_selected_ip").apply()
+                    Toast.makeText(this@MainActivity, "All devices cleared", Toast.LENGTH_SHORT).show()
                 }
 
                 fun selectDevice(device: RemoteDevice) {
@@ -237,19 +259,22 @@ class MainActivity : ComponentActivity() {
 
                 fun addManualIp(ip: String) {
                     lifecycleScope.launch {
+                        val subnet = NetworkEnvironmentManager.extractSubnetPrefix(ip).takeIf { it.isNotBlank() }
                         val probed = scanner.probeSpecificIp(ip)
-                        val device = probed ?: RemoteDevice(
+                        val device = probed?.copy(subnetPrefix = subnet) ?: RemoteDevice(
                             id = "manual_$ip",
                             name = "Smart TV ($ip)",
                             ipAddress = ip,
                             port = 8008,
-                            deviceType = DeviceType.GENERIC
+                            deviceType = DeviceType.GENERIC,
+                            subnetPrefix = subnet
                         )
                         val merged = DeviceSerializer.merge(discoveredDevices, listOf(device))
                         discoveredDevices = merged
                         prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
                         currentDevice = device
                         prefs.edit().putString("last_selected_ip", device.ipAddress).apply()
+                        Toast.makeText(this@MainActivity, "Added TV ($ip)", Toast.LENGTH_SHORT).show()
                     }
                 }
 
@@ -274,6 +299,7 @@ class MainActivity : ComponentActivity() {
                     onToggleHideDevice = { toggleHideDevice(it) },
                     onDeleteDevice = { deleteDevice(it) },
                     onClearOtherNetworks = { clearOtherNetworks() },
+                    onClearAllDevices = { clearAllDevices() },
                     onManualIpAdded = { addManualIp(it) },
                     onSendKey = { sendKey(it) }
                 )
