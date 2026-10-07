@@ -63,7 +63,8 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(prefs.getStringSet("hidden_device_ips", emptySet()) ?: emptySet())
                 }
 
-                val lastIp = prefs.getString("last_selected_ip", null)
+                val subnetLastIp = if (currentSubnetPrefix.isNotBlank()) prefs.getString("last_selected_ip_for_$currentSubnetPrefix", null) else null
+                val lastIp = subnetLastIp ?: prefs.getString("last_selected_ip", null)
                 // Filter initial candidate devices to the currently active subnet
                 val currentNetworkEligible = initialDevices.filter {
                     !hiddenIps.contains(it.ipAddress) && (currentSubnetPrefix.isBlank() || it.effectiveSubnet == currentSubnetPrefix)
@@ -133,7 +134,10 @@ class MainActivity : ComponentActivity() {
 
                 fun selectDevice(device: RemoteDevice) {
                     currentDevice = device
-                    prefs.edit().putString("last_selected_ip", device.ipAddress).apply()
+                    prefs.edit()
+                        .putString("last_selected_ip", device.ipAddress)
+                        .putString("last_selected_ip_for_${device.effectiveSubnet}", device.ipAddress)
+                        .apply()
                 }
 
                 // Periodic Liveness Heartbeat Probe
@@ -158,9 +162,20 @@ class MainActivity : ComponentActivity() {
                     val freshNetInfo = NetworkEnvironmentManager.getActiveSubnetInfo(applicationContext)
                     activeSubnetInfo = freshNetInfo
                     val activePrefix = freshNetInfo?.subnetPrefix ?: ""
+                    val subnetLastIp = if (activePrefix.isNotBlank()) prefs.getString("last_selected_ip_for_$activePrefix", null) else null
 
-                    // Immediately detach foreign subnet device so UI never lingers on another network's TV
-                    if (currentDevice != null && activePrefix.isNotBlank() && currentDevice?.effectiveSubnet != activePrefix) {
+                    // Immediately restore saved device on this network if known, or detach foreign network device
+                    if (activePrefix.isNotBlank()) {
+                        val netEligible = discoveredDevices.filter {
+                            !hiddenIps.contains(it.ipAddress) && it.effectiveSubnet == activePrefix
+                        }
+                        val restored = netEligible.find { it.ipAddress == subnetLastIp } ?: netEligible.firstOrNull()
+                        if (restored != null) {
+                            currentDevice = restored
+                        } else if (currentDevice != null && currentDevice?.effectiveSubnet != activePrefix) {
+                            currentDevice = null
+                        }
+                    } else if (currentDevice != null && activePrefix.isNotBlank() && currentDevice?.effectiveSubnet != activePrefix) {
                         currentDevice = null
                     }
 
@@ -176,7 +191,10 @@ class MainActivity : ComponentActivity() {
                                         prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
                                         if (currentDevice == null && (activePrefix.isBlank() || liveDev.effectiveSubnet == activePrefix)) {
                                             currentDevice = liveDev
-                                            prefs.edit().putString("last_selected_ip", liveDev.ipAddress).apply()
+                                            prefs.edit()
+                                                .putString("last_selected_ip", liveDev.ipAddress)
+                                                .putString("last_selected_ip_for_${liveDev.effectiveSubnet}", liveDev.ipAddress)
+                                                .apply()
                                         }
                                     }
                                 }
@@ -188,7 +206,7 @@ class MainActivity : ComponentActivity() {
                             val eligible = merged.filter {
                                 !hiddenIps.contains(it.ipAddress) && (activePrefix.isBlank() || it.effectiveSubnet == activePrefix)
                             }
-                            val prefIp = prefs.getString("last_selected_ip", null)
+                            val prefIp = subnetLastIp ?: prefs.getString("last_selected_ip", null)
                             val preferred = eligible.find { it.ipAddress == prefIp }
                                 ?: eligible.find { it.deviceType == DeviceType.FIRE_TV || it.deviceType == DeviceType.GOOGLE_TV || it.deviceType == DeviceType.ROKU }
                                 ?: eligible.firstOrNull()
