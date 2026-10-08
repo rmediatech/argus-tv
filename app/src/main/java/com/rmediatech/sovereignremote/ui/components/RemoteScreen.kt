@@ -51,7 +51,6 @@ fun RemoteScreen(
     var showDeviceDialog by remember { mutableStateOf(false) }
     var showManualIpDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
-    var manualIpInput by remember { mutableStateOf("") }
     val view = LocalView.current
 
     val infiniteTransition = rememberInfiniteTransition(label = "LivenessPulse")
@@ -403,427 +402,38 @@ fun RemoteScreen(
 
         // --- DEVICE SELECTION MODAL DIALOG ---
         if (showDeviceDialog) {
-            AlertDialog(
-                onDismissRequest = { showDeviceDialog = false },
-                containerColor = palette.surface,
-                title = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Discovered Devices", style = MaterialTheme.typography.titleMedium, color = palette.textPrimary)
-                        if (isScanning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = palette.primaryAccent,
-                                strokeWidth = 2.dp
-                            )
-                        }
-                    }
+            DeviceSelectionDialog(
+                discoveredDevices = discoveredDevices,
+                currentDevice = currentDevice,
+                hiddenIps = hiddenIps,
+                activeSubnetPrefix = activeSubnetPrefix,
+                isScanning = isScanning,
+                onSelectDevice = onSelectDevice,
+                onToggleHideDevice = onToggleHideDevice,
+                onDeleteDevice = onDeleteDevice,
+                onClearOtherNetworks = onClearOtherNetworks,
+                onClearAllDevices = onClearAllDevices,
+                onScanRequested = onScanRequested,
+                onOpenManualIp = {
+                    showDeviceDialog = false
+                    showManualIpDialog = true
                 },
-                text = {
-                    Column {
-                        val activeDevices = discoveredDevices.filter {
-                            activeSubnetPrefix.isNullOrBlank() || it.effectiveSubnet == activeSubnetPrefix
-                        }
-                        val otherDevices = discoveredDevices.filter {
-                            !activeSubnetPrefix.isNullOrBlank() && it.effectiveSubnet != activeSubnetPrefix
-                        }
-
-                        val visibleActive = activeDevices.filter { !hiddenIps.contains(it.ipAddress) }
-                        val hiddenDevices = discoveredDevices.filter { hiddenIps.contains(it.ipAddress) }
-                        var showHidden by remember { mutableStateOf(false) }
-                        var showOtherNetworks by remember { mutableStateOf(false) }
-
-                        // 1. ACTIVE WI-FI NETWORK SECTION
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "DEVICES ON THIS WI-FI",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = palette.primaryAccent
-                            )
-                            if (isScanning) {
-                                Text("Scanning...", fontSize = 10.sp, color = palette.textSecondary)
-                            }
-                        }
-
-                        if (visibleActive.isEmpty()) {
-                            Text(
-                                text = if (isScanning) "Searching active Wi-Fi for TVs..." else "No TVs found on this Wi-Fi yet.\nTap 'Scan Wi-Fi' to discover devices.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = palette.textSecondary,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        } else {
-                            visibleActive.forEach { device ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (device.id == currentDevice?.id) palette.surfaceElevated else Color.Transparent)
-                                        .clickable {
-                                            onSelectDevice(device)
-                                            showDeviceDialog = false
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        val badgeColor = Color(device.deviceType.badgeColorHex)
-                                        Icon(Icons.Rounded.Tv, contentDescription = null, tint = badgeColor)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Column {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(device.name, fontWeight = FontWeight.SemiBold, color = palette.textPrimary, fontSize = 13.sp)
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(badgeColor.copy(alpha = 0.15f))
-                                                        .border(1.dp, badgeColor.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                ) {
-                                                    Text(
-                                                        text = device.deviceType.displayName,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = badgeColor,
-                                                        fontSize = 8.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                            Text(
-                                                "${device.ipAddress} • " + (if (device.isEthernet) "Ethernet" else "Wi-Fi") + (device.modelName?.let { " • $it" } ?: ""),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = palette.textSecondary,
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(
-                                            onClick = { onDeleteDevice(device) },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.DeleteOutline,
-                                                contentDescription = "Remove Device",
-                                                tint = Color(0xFFFF5252),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { onToggleHideDevice(device.ipAddress) },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.VisibilityOff,
-                                                contentDescription = "Hide Device",
-                                                tint = palette.textSecondary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. SAVED FROM OTHER NETWORKS SECTION
-                        if (otherDevices.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(palette.surfaceElevated)
-                                    .clickable { showOtherNetworks = !showOtherNetworks }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Saved Devices from Other Locations (${otherDevices.size})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = palette.textSecondary
-                                )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(
-                                        onClick = { onClearOtherNetworks() },
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                                    ) {
-                                        Text("Clear", fontSize = 10.sp, color = Color(0xFFFF5252))
-                                    }
-                                    Icon(
-                                        imageVector = if (showOtherNetworks) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                                        contentDescription = "Toggle Other Networks",
-                                        tint = palette.textSecondary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-
-                            if (showOtherNetworks) {
-                                otherDevices.forEach { device ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clickable {
-                                                    onSelectDevice(device)
-                                                    showDeviceDialog = false
-                                                }
-                                        ) {
-                                            Text(device.name, style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
-                                            Text(
-                                                if (device.modelName != null) "${device.deviceType.displayName} • ${device.modelName}" else "${device.deviceType.displayName} • Saved Location",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = palette.textSecondary,
-                                                fontSize = 9.sp
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { onDeleteDevice(device) },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.DeleteOutline,
-                                                contentDescription = "Remove Device",
-                                                tint = Color(0xFFFF5252),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 3. HIDDEN DEVICES SECTION
-                        if (hiddenDevices.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(palette.surfaceElevated)
-                                    .clickable { showHidden = !showHidden }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Hidden / Neighbor TVs (${hiddenDevices.size})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = palette.textSecondary
-                                )
-                                Icon(
-                                    imageVector = if (showHidden) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                                    contentDescription = "Toggle Hidden",
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            if (showHidden) {
-                                hiddenDevices.forEach { device ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(device.name, style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
-                                            Text(device.ipAddress, style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = { onDeleteDevice(device) },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.DeleteOutline,
-                                                    contentDescription = "Remove Device",
-                                                    tint = Color(0xFFFF5252),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                            TextButton(onClick = { onToggleHideDevice(device.ipAddress) }) {
-                                                Text("Unhide", fontSize = 11.sp, color = palette.primaryAccent)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    Row {
-                        TextButton(
-                            onClick = { onScanRequested() },
-                            enabled = !isScanning
-                        ) {
-                            Text("Scan Wi-Fi", color = palette.primaryAccent)
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        TextButton(onClick = {
-                            showDeviceDialog = false
-                            showManualIpDialog = true
-                        }) {
-                            Text("Add IP", color = palette.textPrimary)
-                        }
-                    }
-                },
-                dismissButton = {
-                    Row {
-                        if (discoveredDevices.isNotEmpty()) {
-                            TextButton(onClick = {
-                                onClearAllDevices()
-                                showDeviceDialog = false
-                            }) {
-                                Text("Clear All", color = Color(0xFFFF5252))
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                        }
-                        TextButton(onClick = { showDeviceDialog = false }) {
-                            Text("Close", color = palette.textSecondary)
-                        }
-                    }
-                }
+                onDismiss = { showDeviceDialog = false }
             )
         }
 
         // --- MANUAL IP INPUT DIALOG ---
         if (showManualIpDialog) {
-            AlertDialog(
-                onDismissRequest = { showManualIpDialog = false },
-                containerColor = palette.surface,
-                title = { Text("Manual TV IP Address", style = MaterialTheme.typography.titleMedium, color = palette.textPrimary) },
-                text = {
-                    OutlinedTextField(
-                        value = manualIpInput,
-                        onValueChange = { manualIpInput = it },
-                        label = { Text("e.g. 192.168.1.150") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = palette.textPrimary,
-                            unfocusedTextColor = palette.textPrimary,
-                            focusedBorderColor = palette.primaryAccent,
-                            unfocusedBorderColor = palette.border
-                        )
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (manualIpInput.isNotBlank()) {
-                                onManualIpAdded(manualIpInput.trim())
-                                showManualIpDialog = false
-                                manualIpInput = ""
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.primaryAccent, contentColor = palette.background)
-                    ) {
-                        Text("Connect", fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showManualIpDialog = false }) {
-                        Text("Cancel", color = palette.textSecondary)
-                    }
-                }
+            ManualIpDialog(
+                onManualIpAdded = onManualIpAdded,
+                onDismiss = { showManualIpDialog = false }
             )
         }
 
         // --- ABOUT / INFO DIALOG ---
         if (showAboutDialog) {
-            AlertDialog(
-                onDismissRequest = { showAboutDialog = false },
-                containerColor = palette.surface,
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Info,
-                            contentDescription = null,
-                            tint = palette.primaryAccent,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            "About Argus",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.textPrimary
-                        )
-                    }
-                },
-                text = {
-                    Column {
-                        Text(
-                            "Argus Sovereign Remote v1.0.0",
-                            fontWeight = FontWeight.Bold,
-                            color = palette.primaryAccent,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "The all-seeing, zero-cloud universal device & smart TV controller. Communicates directly with Google TV, Android TV, Fire TV, Roku, Smart TVs, and Wake-on-LAN hosts over your local network.",
-                            fontSize = 13.sp,
-                            color = palette.textSecondary
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(color = palette.border)
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text(
-                            "DEVELOPER & ARCHITECTURE",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.textSecondary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Crafted by RMediaTech",
-                            fontWeight = FontWeight.Bold,
-                            color = palette.textPrimary,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            "https://rmediatech.com",
-                            color = palette.primaryAccent,
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            "100% Free • Zero Ads • Zero Cloud Relays • Pure Local Sovereign Engineering",
-                            fontSize = 11.sp,
-                            color = palette.textSecondary
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showAboutDialog = false }) {
-                        Text("Close", color = palette.primaryAccent, fontWeight = FontWeight.Bold)
-                    }
-                }
+            AboutArgusDialog(
+                onDismiss = { showAboutDialog = false }
             )
         }
     }
