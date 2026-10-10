@@ -262,9 +262,17 @@ class ArgusSessionState(
 
         if (key == RemoteKey.POWER) {
             livenessState = DeviceLivenessState.WAKING
-            device.macAddress?.let { mac ->
+            val targetMac = device.macAddress ?: WakeOnLan.getMacFromArp(device.ipAddress)
+            if (!targetMac.isNullOrBlank()) {
+                if (device.macAddress == null) {
+                    val updatedDev = device.copy(macAddress = targetMac)
+                    currentDevice = updatedDev
+                    val updatedList = DeviceSerializer.merge(discoveredDevices, listOf(updatedDev))
+                    discoveredDevices = updatedList
+                    prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updatedList)).apply()
+                }
                 scope.launch(Dispatchers.IO) {
-                    WakeOnLan.wake(mac, device.ipAddress)
+                    WakeOnLan.wake(targetMac, device.ipAddress, context)
                 }
             }
         }
@@ -295,17 +303,30 @@ class ArgusSessionState(
             if (key == RemoteKey.POWER) {
                 scope.launch {
                     var detectedOnline = false
-                    for (i in 1..16) {
-                        delay(600)
-                        val state = DeviceLivenessTracker.probeLiveness(device, 250)
+                    // Phase 1: Fast-react burst (12 probes with 120ms delay & 100ms timeout ~ 2.6s)
+                    for (i in 1..12) {
+                        delay(120)
+                        val state = DeviceLivenessTracker.probeLiveness(device, 100)
                         if (state == DeviceLivenessState.ONLINE) {
                             livenessState = DeviceLivenessState.ONLINE
                             detectedOnline = true
                             break
                         }
                     }
+                    // Phase 2: Steady polling (8 probes with 350ms delay & 200ms timeout ~ 4.4s)
                     if (!detectedOnline) {
-                        livenessState = DeviceLivenessTracker.probeLiveness(device, 300)
+                        for (i in 1..8) {
+                            delay(350)
+                            val state = DeviceLivenessTracker.probeLiveness(device, 200)
+                            if (state == DeviceLivenessState.ONLINE) {
+                                livenessState = DeviceLivenessState.ONLINE
+                                detectedOnline = true
+                                break
+                            }
+                        }
+                    }
+                    if (!detectedOnline) {
+                        livenessState = DeviceLivenessTracker.probeLiveness(device, 250)
                     }
                 }
             }

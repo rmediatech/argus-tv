@@ -87,13 +87,13 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
             val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
             if (!mac.isNullOrBlank()) {
                 Log.i("GoogleTvProtocol", "TV ${device.ipAddress} is sleeping. Broadcasting WoL to MAC $mac...")
-                com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress)
+                com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
 
                 // Background watcher: Once TV boots and port 5555 opens, send KEYCODE_WAKEUP (224) to turn on display
                 kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                    for (attempt in 1..8) {
-                        kotlinx.coroutines.delay(1200)
-                        if (isPortOpen(device.ipAddress, 5555, 300)) {
+                    for (attempt in 1..15) {
+                        kotlinx.coroutines.delay(300)
+                        if (isPortOpen(device.ipAddress, 5555, 200)) {
                             try {
                                 val dadb = getDadb(device.ipAddress, 5555)
                                 dadb.shell("input keyevent 224") // WAKEUP

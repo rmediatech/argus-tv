@@ -82,4 +82,14 @@ class WakeOnLanTest {
             assertNull("Adversarial payload '$malformed' should return null instead of throwing", result)
         }
     }
+
+    @Test
+    fun testWakeExecutionSafety() = kotlinx.coroutines.runBlocking {
+        // Calling wake with malformed MAC or null context must safely return false without crashing
+        val badMacResult = WakeOnLan.wake("invalid-mac", "192.168.1.100", null)
+        assertFalse("Malformed MAC must cleanly return false", badMacResult)
+
+        val emptyMacResult = WakeOnLan.wake("", null, null)
+        assertFalse("Empty MAC must cleanly return false", emptyMacResult)
+    }
 }

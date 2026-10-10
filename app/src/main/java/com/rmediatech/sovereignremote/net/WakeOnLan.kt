@@ -1,5 +1,7 @@
 package com.rmediatech.sovereignremote.net
 
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -41,12 +43,28 @@ object WakeOnLan {
     /**
      * Broadcasts Wake-on-LAN (WoL) Magic Packets to wake sleeping Smart TVs.
      * Transmits across 255.255.255.255, directed subnet broadcast, and unicast.
+     * Acquires Android WifiManager.MulticastLock when context is provided to prevent Wi-Fi radio packet filtering.
      */
-    suspend fun wake(macAddress: String, ipAddress: String? = null): Boolean = withContext(Dispatchers.IO) {
+    suspend fun wake(
+        macAddress: String,
+        ipAddress: String? = null,
+        context: Context? = null
+    ): Boolean = withContext(Dispatchers.IO) {
         val packetData = buildMagicPacket(macAddress)
         if (packetData == null) {
             Log.e(TAG, "Invalid MAC address for WoL: '$macAddress'")
             return@withContext false
+        }
+
+        val wifiManager = context?.applicationContext?.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val multicastLock = try {
+            wifiManager?.createMulticastLock("ArgusWakeOnLan")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not acquire MulticastLock: ${e.message}")
+            null
         }
 
         try {
@@ -77,7 +95,7 @@ object WakeOnLan {
 
             DatagramSocket().use { socket ->
                 socket.broadcast = true
-                // Burst 3 times on ports 9 and 7 to ensure delivery over Wi-Fi
+                // Rapid burst 3 times on ports 9 and 7 across targets
                 repeat(3) { burst ->
                     for (port in listOf(9, 7)) {
                         for (target in targets) {
@@ -91,7 +109,7 @@ object WakeOnLan {
                         }
                     }
                     if (burst < 2) {
-                        delay(60)
+                        delay(20)
                     }
                 }
             }
@@ -99,6 +117,14 @@ object WakeOnLan {
         } catch (e: Exception) {
             Log.e(TAG, "Failed transmitting WoL magic packets: ${e.message}", e)
             false
+        } finally {
+            try {
+                if (multicastLock?.isHeld == true) {
+                    multicastLock.release()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not release MulticastLock: ${e.message}")
+            }
         }
     }
 
