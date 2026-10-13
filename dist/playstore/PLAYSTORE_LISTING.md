@@ -9,43 +9,42 @@
 ## 🏷️ 1. App Details
 
 * **App name (Max 30 characters):**  
-  `Argus - Smart TV Remote`
+  `Argus: Free Smart TV Remote`
 
 * **Short description (Max 80 characters):**  
-  `Zero-cloud, zero-ad tactical smart TV remote controller for your local Wi-Fi.`
+  `Fun, convenient & 100% free smart TV remote for your Wi-Fi. Zero ads, zero hassle!`
 
 * **Full description (Max 4,000 characters):**  
 ```text
-Take back control of your entertainment with Argus.
+Lost your plastic TV remote between the couch cushions again? Or tired of annoying remote apps that demand monthly subscriptions, account signups, and blast you with fullscreen ads?
 
-Commercial remote apps bombard you with intrusive banner ads, demand account logins, and secretly track your TV viewing history. Argus is different: 100% sovereign, private, and lightning-fast.
+Meet Argus — a fun, delightfully convenient, and 100% FREE universal smart TV remote that works right from your phone over your home Wi-Fi!
 
-⚡ ZERO CLOUD, ZERO TRACKING, ZERO ADS
-Argus never phones home. It connects directly from your phone to your TV over your local home Wi-Fi network using microsecond local LAN protocols. No telemetry, no third-party SDKs, no cloud servers, and zero advertisements.
+🎉 WHY YOU'LL LOVE ARGUS:
+• 100% Free Forever: No paywalls, no subscriptions, no locked buttons.
+• Zero Ads: No video popups interrupting your favorite movie. Ever.
+• Instant Convenience: Auto-discovers TVs on your Wi-Fi in seconds — zero account logins or tedious pairing steps.
+• Tactile & Fun: High-frequency haptic vibration feedback on every button press with sleek AMOLED dark tactical themes and glowing cyan accents.
 
-📺 UNIVERSAL SMART TV & MEDIA COMPATIBILITY
-• Roku TV & Streaming Players (direct External Control Protocol)
-• Android TV & Google TV
-• Fire TV & Smart TV media displays
-• Wake-on-LAN (WoL) support to boot sleeping TVs directly over Wi-Fi
+📺 WORKS WITH POPULAR SMART TVS & STREAMING DEVICES:
+• Roku TV & Roku Streaming Sticks (TCL, Hisense, Onn, Sharp, Philips)
+• Android TV & Google TV devices (Sony, Chromecast, NVIDIA Shield)
+• Fire TV & smart media displays
+• Wake-on-LAN (WoL): Power on supported sleeping TVs directly over Wi-Fi!
 
-🎛️ FULL TACTICAL REMOTE CONTROLS
-• Directional D-Pad (Up, Down, Left, Right, OK / Select)
-• Instant Volume Up, Volume Down, and One-Tap Mute
-• Dedicated Media Controls: Play, Pause, Fast-Forward, Rewind
-• Navigation: Home, Back, and Options (*) keys
-• High-Frequency Tactile Haptic Feedback on button press
+🎮 ALL THE ESSENTIAL CONTROLS:
+• Smooth Directional D-Pad (Up, Down, Left, Right, Select/OK)
+• Fast Volume Up, Volume Down, and Instant Mute
+• Dedicated Media Playback: Play, Pause, Rewind, Fast-Forward
+• Navigation Essentials: Home, Back, and Options (*) keys
+• Smart Multi-Network Memory: Automatically recognizes your home Wi-Fi and remembers your TVs across different rooms or locations without clutter.
 
-🖤 AMOLED TACTICAL THEMES
-Optimized for OLED and AMOLED screens with battery-saving pure dark backgrounds, tactical electric cyan, crimson, and amber accents.
+🛡️ 100% PRIVATE — ZERO CLOUD, ZERO TRACKING:
+Your living room is your private sanctuary. Argus never phones home, collects zero telemetry, has no third-party tracking SDKs, and talks directly to your TV over your local LAN.
 
-🌐 MULTI-LOCATION MEMORY
-Argus automatically discovers devices on your current Wi-Fi and cleanly separates them from other saved locations. No device contamination when switching between home, office, or travel networks.
+Grab Argus, kick back, and enjoy your entertainment!
 
-🛡️ PRIVACY GUARANTEE
-Your living room is private. Argus collects zero personal data, stores zero logs outside your device, and requires zero permissions beyond local Wi-Fi networking.
-
-Crafted by Rmediatech LLC (rmediatech.com).
+Crafted with care by Rmediatech LLC (rmediatech.com).
 ```
 
 ---
