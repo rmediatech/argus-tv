@@ -17,15 +17,34 @@ all: build
 
 help:
 	@echo "Argus Sovereign Remote Build & Deployment Targets:"
-	@echo "  make build      - Compile debug APK using Gradle"
-	@echo "  make install    - Push and install debug APK to connected Android device"
-	@echo "  make run        - Launch Argus on connected Android device"
-	@echo "  make logs       - Stream device logcat logs"
-	@echo "  make devices    - List connected ADB devices (USB & Wi-Fi)"
-	@echo "  make clean      - Clean build caches and outputs"
+	@echo "  make build        - Compile debug APK using Gradle"
+	@echo "  make release      - Compile signed release AAB bundle and APK"
+	@echo "  make release-sign - Full build, sign, and GPG provenance seal (SOVEREIGN-SIGN-01)"
+	@echo "  make install      - Push and install debug APK to connected Android device"
+	@echo "  make run          - Launch Argus on connected Android device"
+	@echo "  make logs         - Stream device logcat logs"
+	@echo "  make devices      - List connected ADB devices (USB & Wi-Fi)"
+	@echo "  make clean        - Clean build caches and outputs"
 
 build:
 	JAVA_HOME=$(JAVA_HOME) ./gradlew assembleDebug
+
+release:
+	JAVA_HOME=$(JAVA_HOME) ./gradlew bundleRelease assembleRelease
+
+release-sign: release
+	@echo "🔐 Assembling and signing sovereign release distribution (SOVEREIGN-SIGN-01)..."
+	@mkdir -p dist/release-v1.0.0
+	@cp app/build/outputs/bundle/release/app-release.aab dist/release-v1.0.0/argus-v1.0.0.aab
+	@cp app/build/outputs/apk/release/app-release.apk dist/release-v1.0.0/argus-v1.0.0.apk
+	@cd dist/release-v1.0.0 && sha256sum argus-v1.0.0.aab argus-v1.0.0.apk > SHA256SUMS
+	@if gpg --list-keys 4E428019A109578B >/dev/null 2>&1; then \
+		gpg --batch --yes --armor --detach-sign --default-key 4E428019A109578B --output dist/release-v1.0.0/SHA256SUMS.asc dist/release-v1.0.0/SHA256SUMS; \
+		echo "✅ Sovereign detached signature verified:"; \
+		gpg --verify dist/release-v1.0.0/SHA256SUMS.asc dist/release-v1.0.0/SHA256SUMS; \
+	fi
+	@echo "🎉 Release ready in dist/release-v1.0.0/"
+	@command -v sovereign-tone >/dev/null 2>&1 && sovereign-tone bottle || true
 
 install:
 	@if [ ! -f $(APK_PATH) ]; then \
