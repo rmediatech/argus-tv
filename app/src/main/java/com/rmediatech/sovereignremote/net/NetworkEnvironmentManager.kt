@@ -18,39 +18,69 @@ data class SubnetInfo(
     val subnetPrefix: String, // e.g. "192.168.0", "10.0.0"
     val cidr: String,         // e.g. "192.168.0.0/24"
     val prefixLength: Int,    // e.g. 24
-    val broadcastIp: String   // e.g. "192.168.0.255"
-)
+    val broadcastIp: String,  // e.g. "192.168.0.255"
+    val gatewayIp: String? = null,
+    val gatewayMac: String? = null,
+    val networkId: String = computeNetworkId(gatewayMac, subnetPrefix)
+) {
+    companion object {
+        fun computeNetworkId(gatewayMac: String?, subnetPrefix: String): String {
+            val cleanMac = gatewayMac?.replace("[:-]".toRegex(), "")?.lowercase()?.trim()
+            return if (!cleanMac.isNullOrBlank() && cleanMac != "000000000000") {
+                "net_${cleanMac}_${subnetPrefix}"
+            } else {
+                "net_subnet_${subnetPrefix}"
+            }
+        }
+    }
+}
 
 object NetworkEnvironmentManager {
     private const val TAG = "NetworkEnv"
 
     /**
      * Resolves the active network's IPv4 configuration.
-     * Prioritizes active Wi-Fi and Ethernet interfaces via modern ConnectivityManager.
-     * Falls back to network interface interrogation and Wi-Fi DHCP info.
+     * Prioritizes active Wi-Fi and Ethernet interfaces via modern ConnectivityManager (checking all active networks).
+     * Falls back to network interface enumeration and /proc/net/route gateway discovery.
      */
     fun getActiveSubnetInfo(context: Context): SubnetInfo? {
-        // 1. Modern ConnectivityManager (Android 10+ standard)
+        var gwIp: String? = null
+
+        // 1. Modern ConnectivityManager: Inspect active network and allNetworks
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val activeNetwork = cm?.activeNetwork
-            if (activeNetwork != null) {
-                val caps = cm.getNetworkCapabilities(activeNetwork)
-                val isLan = caps != null && (
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-                )
+            if (cm != null) {
+                val candidateNetworks = mutableListOf<android.net.Network>()
+                cm.activeNetwork?.let { candidateNetworks.add(it) }
+                for (net in cm.allNetworks) {
+                    if (!candidateNetworks.contains(net)) candidateNetworks.add(net)
+                }
 
-                if (isLan) {
-                    val linkProps = cm.getLinkProperties(activeNetwork)
-                    if (linkProps != null) {
-                        for (la in linkProps.linkAddresses) {
-                            val addr = la.address
-                            if (addr is Inet4Address && !addr.isLoopbackAddress && !addr.isLinkLocalAddress) {
-                                val info = computeSubnetInfo(addr, la.prefixLength)
-                                if (info != null) {
-                                    Log.d(TAG, "Resolved active subnet via ConnectivityManager: $info")
-                                    return info
+                for (net in candidateNetworks) {
+                    val caps = cm.getNetworkCapabilities(net) ?: continue
+                    val isLan = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+
+                    if (isLan) {
+                        val linkProps = cm.getLinkProperties(net)
+                        if (linkProps != null) {
+                            for (route in linkProps.routes) {
+                                if (route.isDefaultRoute && route.gateway is Inet4Address) {
+                                    gwIp = route.gateway?.hostAddress
+                                    break
+                                }
+                            }
+
+                            for (la in linkProps.linkAddresses) {
+                                val addr = la.address
+                                if (addr is Inet4Address && !addr.isLoopbackAddress && !addr.isLinkLocalAddress) {
+                                    if (gwIp.isNullOrBlank()) gwIp = getDefaultGatewayIpFromRoute()
+                                    val gwMac = gwIp?.let { WakeOnLan.getMacFromArp(it) }
+                                    val info = computeSubnetInfo(addr, la.prefixLength, gwIp, gwMac)
+                                    if (info != null) {
+                                        Log.d(TAG, "Resolved active subnet via ConnectivityManager: $info (networkId=${info.networkId})")
+                                        return info
+                                    }
                                 }
                             }
                         }
@@ -65,8 +95,11 @@ object NetworkEnvironmentManager {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             if (interfaces != null) {
+                if (gwIp.isNullOrBlank()) gwIp = getDefaultGatewayIpFromRoute()
+                val gwMac = gwIp?.let { WakeOnLan.getMacFromArp(it) }
+
                 for (intf in interfaces) {
-                    if (intf.isLoopback || !intf.isUp) continue
+                    if (intf.isLoopback) continue
                     val name = intf.name.lowercase()
                     val isLan = name.startsWith("wlan") || name.startsWith("eth") || name.startsWith("en") || name.startsWith("tiwlan")
                     if (!isLan) continue
@@ -75,9 +108,9 @@ object NetworkEnvironmentManager {
                         val addr = ia.address
                         if (addr is Inet4Address && !addr.isLoopbackAddress) {
                             val prefix = ia.networkPrefixLength.toInt()
-                            val info = computeSubnetInfo(addr, if (prefix in 8..30) prefix else 24)
+                            val info = computeSubnetInfo(addr, if (prefix in 8..30) prefix else 24, gwIp, gwMac)
                             if (info != null) {
-                                Log.d(TAG, "Resolved active subnet via NetworkInterface (${intf.name}): $info")
+                                Log.d(TAG, "Resolved active subnet via NetworkInterface (${intf.name}): $info (networkId=${info.networkId})")
                                 return info
                             }
                         }
@@ -104,12 +137,17 @@ object NetworkEnvironmentManager {
                 val parts = ipStr.split(".")
                 if (parts.size == 4) {
                     val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
+                    if (gwIp.isNullOrBlank()) gwIp = getDefaultGatewayIpFromRoute()
+                    val gwMac = gwIp?.let { WakeOnLan.getMacFromArp(it) }
                     return SubnetInfo(
                         localIp = ipStr,
                         subnetPrefix = prefix,
                         cidr = "$prefix.0/24",
                         prefixLength = 24,
-                        broadcastIp = "$prefix.255"
+                        broadcastIp = "$prefix.255",
+                        gatewayIp = gwIp,
+                        gatewayMac = gwMac,
+                        networkId = SubnetInfo.computeNetworkId(gwMac, prefix)
                     )
                 }
             }
@@ -121,9 +159,44 @@ object NetworkEnvironmentManager {
     }
 
     /**
+     * Resolves the default gateway IPv4 address from kernel routing tables (/proc/net/route).
+     */
+    fun getDefaultGatewayIpFromRoute(): String? {
+        try {
+            java.io.BufferedReader(java.io.FileReader("/proc/net/route")).use { reader ->
+                var line = reader.readLine() // Header
+                while (reader.readLine().also { line = it } != null) {
+                    val tokens = line?.split(Regex("\\s+")) ?: continue
+                    if (tokens.size >= 8) {
+                        val dest = tokens[1]
+                        val flags = tokens[3].toIntOrNull(16) ?: 0
+                        // Default route has destination 00000000 and RTF_GATEWAY (0x2) flag set
+                        if (dest == "00000000" && (flags and 0x2 != 0)) {
+                            val gwHex = tokens[2]
+                            if (gwHex.length == 8) {
+                                val ip0 = gwHex.substring(6, 8).toInt(16)
+                                val ip1 = gwHex.substring(4, 6).toInt(16)
+                                val ip2 = gwHex.substring(2, 4).toInt(16)
+                                val ip3 = gwHex.substring(0, 2).toInt(16)
+                                return "$ip0.$ip1.$ip2.$ip3"
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    /**
      * Computes the SubnetInfo from an Inet4Address and CIDR prefix length.
      */
-    fun computeSubnetInfo(addr: Inet4Address, prefixLength: Int): SubnetInfo? {
+    fun computeSubnetInfo(
+        addr: Inet4Address,
+        prefixLength: Int,
+        gatewayIp: String? = null,
+        gatewayMac: String? = null
+    ): SubnetInfo? {
         val hostIp = addr.hostAddress ?: return null
         val parts = hostIp.split(".")
         if (parts.size != 4) return null
@@ -148,7 +221,10 @@ object NetworkEnvironmentManager {
             subnetPrefix = subnetPrefix,
             cidr = "$baseIp/$safePrefix",
             prefixLength = safePrefix,
-            broadcastIp = broadcastIp
+            broadcastIp = broadcastIp,
+            gatewayIp = gatewayIp,
+            gatewayMac = gatewayMac,
+            networkId = SubnetInfo.computeNetworkId(gatewayMac, subnetPrefix)
         )
     }
 

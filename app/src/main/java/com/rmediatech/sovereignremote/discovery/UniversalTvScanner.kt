@@ -32,7 +32,7 @@ class UniversalTvScanner(
     }
 
     suspend fun discoverAll(
-        timeoutMs: Int = 4500,
+        timeoutMs: Int = 6500,
         onDeviceFound: ((RemoteDevice) -> Unit)? = null
     ): List<RemoteDevice> = withContext(Dispatchers.IO) {
         val foundDevices = ConcurrentHashMap<String, RemoteDevice>()
@@ -40,15 +40,32 @@ class UniversalTvScanner(
 
         // 1. Resolve active network subnet environment
         val activeSubnetInfo = NetworkEnvironmentManager.getActiveSubnetInfo(context)
+        val currentNetId = activeSubnetInfo?.networkId
+        val currentSubnet = activeSubnetInfo?.subnetPrefix
+
         val candidateIps = NetworkEnvironmentManager.generateCandidateIps(activeSubnetInfo).toMutableSet()
         candidateIps.addAll(arpMappings.keys)
+
+        // Prioritize hosts in kernel ARP cache (instant 0ms response probability)
+        val sortedCandidates = mutableListOf<String>()
+        val activeArpIps = arpMappings.keys.filter { ip ->
+            currentSubnet == null || NetworkEnvironmentManager.matchesSubnet(ip, currentSubnet)
+        }
+        sortedCandidates.addAll(activeArpIps)
+        for (ip in candidateIps) {
+            if (!sortedCandidates.contains(ip)) sortedCandidates.add(ip)
+        }
 
         fun recordDevice(device: RemoteDevice) {
             val existing = foundDevices[device.ipAddress]
             if (existing == null || existing.deviceType == DeviceType.GENERIC) {
-                val enriched = if (device.macAddress.isNullOrBlank()) {
-                    device.copy(macAddress = arpMappings[device.ipAddress] ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress))
-                } else device
+                val enriched = device.copy(
+                    macAddress = if (device.macAddress.isNullOrBlank()) {
+                        arpMappings[device.ipAddress] ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                    } else device.macAddress,
+                    subnetPrefix = device.subnetPrefix ?: currentSubnet,
+                    networkId = device.networkId ?: currentNetId
+                )
                 foundDevices[device.ipAddress] = enriched
                 onDeviceFound?.invoke(enriched)
             }
@@ -64,15 +81,14 @@ class UniversalTvScanner(
         }
 
         // 3. High-throughput bounded TCP sweep (Semaphore bounds concurrency to avoid thread starvation)
-        val concurrencyLimit = Semaphore(50)
-        val probeJobs = candidateIps.map { ip ->
+        val concurrencyLimit = Semaphore(60)
+        val probeJobs = sortedCandidates.map { ip ->
             launch {
                 concurrencyLimit.withPermit {
-                    // Check primary smart TV ports: Roku (8060), Google TV (8008), Fire TV (5555), Samsung (8001)
                     val protocols = registry.getProtocols()
                     for (protocol in protocols) {
                         if (foundDevices.containsKey(ip)) break
-                        if (isPortReachable(ip, protocol.defaultPort, 140)) {
+                        if (isPortReachable(ip, protocol.defaultPort, 220)) {
                             val device = protocol.probe(ip, protocol.defaultPort)
                             if (device != null) {
                                 recordDevice(device)
@@ -100,12 +116,17 @@ class UniversalTvScanner(
     }
 
     suspend fun probeSpecificIp(ip: String): RemoteDevice? = withContext(Dispatchers.IO) {
+        val activeNet = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         val mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
         for (protocol in registry.getProtocols()) {
-            if (isPortReachable(ip, protocol.defaultPort, 300)) {
+            if (isPortReachable(ip, protocol.defaultPort, 350)) {
                 val device = protocol.probe(ip, protocol.defaultPort)
                 if (device != null) {
-                    return@withContext if (device.macAddress.isNullOrBlank()) device.copy(macAddress = mac) else device
+                    return@withContext device.copy(
+                        macAddress = device.macAddress ?: mac,
+                        subnetPrefix = device.subnetPrefix ?: activeNet?.subnetPrefix,
+                        networkId = device.networkId ?: activeNet?.networkId
+                    )
                 }
             }
         }
@@ -117,7 +138,9 @@ class UniversalTvScanner(
             ipAddress = ip,
             port = 8008,
             deviceType = DeviceType.GENERIC,
-            macAddress = mac
+            macAddress = mac,
+            subnetPrefix = activeNet?.subnetPrefix,
+            networkId = activeNet?.networkId
         )
     }
 

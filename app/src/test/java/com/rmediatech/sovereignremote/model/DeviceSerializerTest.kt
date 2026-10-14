@@ -138,4 +138,42 @@ class DeviceSerializerTest {
         assertEquals(1, result.size)
         assertEquals(DeviceType.GENERIC, result[0].deviceType)
     }
+
+    @Test
+    fun testSerializationAndMergePreservesNetworkId() {
+        val original = listOf(
+            RemoteDevice(
+                id = "tv_net_test",
+                name = "Test TV",
+                ipAddress = "192.168.1.151",
+                port = 8008,
+                deviceType = DeviceType.GOOGLE_TV,
+                subnetPrefix = "192.168.1",
+                networkId = "net_aabbccddeeff_192.168.1"
+            )
+        )
+
+        val json = DeviceSerializer.serialize(original)
+        val deserialized = DeviceSerializer.deserialize(json)
+
+        assertEquals(1, deserialized.size)
+        assertEquals("net_aabbccddeeff_192.168.1", deserialized[0].networkId)
+        assertEquals("net_aabbccddeeff_192.168.1", deserialized[0].effectiveNetworkId)
+
+        // Test merge preserves networkId when fresh device lacks it
+        val freshWithoutNetId = listOf(
+            RemoteDevice(
+                id = "tv_net_test",
+                name = "Test TV Fresh",
+                ipAddress = "192.168.1.151",
+                port = 8008,
+                deviceType = DeviceType.GOOGLE_TV,
+                subnetPrefix = "192.168.1",
+                networkId = null
+            )
+        )
+        val merged = DeviceSerializer.merge(deserialized, freshWithoutNetId)
+        assertEquals(1, merged.size)
+        assertEquals("net_aabbccddeeff_192.168.1", merged[0].networkId)
+    }
 }

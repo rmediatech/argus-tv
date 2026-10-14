@@ -40,6 +40,7 @@ object DeviceSerializer {
             obj.put("isEthernet", d.isEthernet)
             obj.put("macAddress", d.macAddress?.trim() ?: "")
             obj.put("subnetPrefix", sanitize(d.subnetPrefix ?: d.effectiveSubnet))
+            obj.put("networkId", sanitize(d.networkId ?: ""))
             arr.put(obj)
         }
         return arr.toString()
@@ -73,6 +74,7 @@ object DeviceSerializer {
                 val isEthernet = obj.optBoolean("isEthernet", false)
                 val mac = obj.optString("macAddress").takeIf { it.isNotBlank() }
                 val subnetPrefix = obj.optString("subnetPrefix").takeIf { it.isNotBlank() }
+                val networkId = obj.optString("networkId").takeIf { it.isNotBlank() }
 
                 list.add(
                     RemoteDevice(
@@ -84,7 +86,8 @@ object DeviceSerializer {
                         modelName = modelName,
                         isEthernet = isEthernet,
                         macAddress = mac,
-                        subnetPrefix = subnetPrefix
+                        subnetPrefix = subnetPrefix,
+                        networkId = networkId
                     )
                 )
             }
@@ -107,7 +110,8 @@ object DeviceSerializer {
                     macAddress = f.macAddress ?: old.macAddress,
                     modelName = f.modelName ?: old.modelName,
                     name = if (f.name.startsWith("Google TV") && !old.name.startsWith("Google TV")) old.name else f.name,
-                    subnetPrefix = f.subnetPrefix ?: old.subnetPrefix
+                    subnetPrefix = f.subnetPrefix ?: old.subnetPrefix,
+                    networkId = f.networkId ?: old.networkId
                 )
             } else {
                 map[f.ipAddress] = f

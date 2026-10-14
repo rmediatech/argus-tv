@@ -88,4 +88,80 @@ class NetworkEnvironmentManagerTest {
         assertEquals("192.168.1", devHome.effectiveSubnet)
         assertEquals("10.0.0", devFriend.effectiveSubnet)
     }
+
+    @Test
+    fun testComputeNetworkIdWithValidMac() {
+        val colonMac = "50:C7:BF:11:22:33"
+        val dashMac = "50-c7-bf-11-22-33"
+        val expected = "net_50c7bf112233_192.168.1"
+
+        assertEquals(expected, SubnetInfo.computeNetworkId(colonMac, "192.168.1"))
+        assertEquals(expected, SubnetInfo.computeNetworkId(dashMac, "192.168.1"))
+    }
+
+    @Test
+    fun testComputeNetworkIdFallbackWhenMacMissingOrZero() {
+        assertEquals("net_subnet_192.168.1", SubnetInfo.computeNetworkId(null, "192.168.1"))
+        assertEquals("net_subnet_192.168.1", SubnetInfo.computeNetworkId("", "192.168.1"))
+        assertEquals("net_subnet_192.168.1", SubnetInfo.computeNetworkId("   ", "192.168.1"))
+        assertEquals("net_subnet_192.168.1", SubnetInfo.computeNetworkId("00:00:00:00:00:00", "192.168.1"))
+    }
+
+    @Test
+    fun testMultiLocationSameSubnetCollisionResolution() {
+        // Both Home and Friend's house use the common default 192.168.1.0/24 subnet.
+        val homeGatewayMac = "50:c7:bf:aa:bb:cc"
+        val friendGatewayMac = "00:11:32:dd:ee:ff"
+
+        val homeNetId = SubnetInfo.computeNetworkId(homeGatewayMac, "192.168.1")
+        val friendNetId = SubnetInfo.computeNetworkId(friendGatewayMac, "192.168.1")
+
+        assertNotEquals(homeNetId, friendNetId)
+        assertEquals("net_50c7bfaabbcc_192.168.1", homeNetId)
+        assertEquals("net_001132ddeeff_192.168.1", friendNetId)
+
+        // Device saved at Home
+        val homeTv = RemoteDevice(
+            id = "hisense_home",
+            name = "Living Room Hisense",
+            ipAddress = "192.168.1.151",
+            port = 5555,
+            deviceType = DeviceType.FIRE_TV,
+            networkId = homeNetId,
+            subnetPrefix = "192.168.1"
+        )
+
+        // Device discovered at Friend's house
+        val friendTv = RemoteDevice(
+            id = "tcl_friend",
+            name = "Friend's TCL Roku",
+            ipAddress = "192.168.1.88",
+            port = 8060,
+            deviceType = DeviceType.ROKU,
+            networkId = friendNetId,
+            subnetPrefix = "192.168.1"
+        )
+
+        // Subnets match (both 192.168.1), but networkIds are cleanly partitioned
+        assertEquals("192.168.1", homeTv.effectiveSubnet)
+        assertEquals("192.168.1", friendTv.effectiveSubnet)
+        assertEquals(homeNetId, homeTv.effectiveNetworkId)
+        assertEquals(friendNetId, friendTv.effectiveNetworkId)
+
+        // When user is at Friend's house:
+        val activeAtFriend = friendNetId
+        assertTrue("Friend TV must match active network", friendTv.effectiveNetworkId == activeAtFriend)
+        assertFalse("Home TV must NOT match active network at friend's house", homeTv.effectiveNetworkId == activeAtFriend)
+
+        // Partitioning simulation:
+        val allDiscovered = listOf(homeTv, friendTv)
+        val onThisWifi = allDiscovered.filter { it.effectiveNetworkId == activeAtFriend }
+        val otherLocations = allDiscovered.filter { it.effectiveNetworkId != activeAtFriend }
+
+        assertEquals(1, onThisWifi.size)
+        assertEquals(friendTv.id, onThisWifi.first().id)
+
+        assertEquals(1, otherLocations.size)
+        assertEquals(homeTv.id, otherLocations.first().id)
+    }
 }

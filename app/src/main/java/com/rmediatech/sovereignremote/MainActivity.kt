@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
                     discoveredDevices = sessionState.discoveredDevices,
                     hiddenIps = sessionState.hiddenIps,
                     activeSubnetPrefix = sessionState.currentSubnetPrefix.takeIf { it.isNotBlank() },
+                    activeNetworkId = sessionState.currentNetworkId.takeIf { it.isNotBlank() },
                     isScanning = sessionState.isScanning,
                     livenessState = sessionState.livenessState,
                     lastAckLatencyMs = sessionState.lastAckLatencyMs,

@@ -34,6 +34,7 @@ fun DeviceSelectionDialog(
     currentDevice: RemoteDevice?,
     hiddenIps: Set<String>,
     activeSubnetPrefix: String?,
+    activeNetworkId: String? = null,
     isScanning: Boolean,
     onSelectDevice: (RemoteDevice) -> Unit,
     onToggleHideDevice: (String) -> Unit,
@@ -68,10 +69,22 @@ fun DeviceSelectionDialog(
         text = {
             Column {
                 val activeDevices = discoveredDevices.filter {
-                    activeSubnetPrefix.isNullOrBlank() || it.effectiveSubnet == activeSubnetPrefix
+                    if (!activeNetworkId.isNullOrBlank()) {
+                        it.effectiveNetworkId == activeNetworkId
+                    } else if (!activeSubnetPrefix.isNullOrBlank()) {
+                        it.effectiveSubnet == activeSubnetPrefix
+                    } else {
+                        false
+                    }
                 }
                 val otherDevices = discoveredDevices.filter {
-                    !activeSubnetPrefix.isNullOrBlank() && it.effectiveSubnet != activeSubnetPrefix
+                    if (!activeNetworkId.isNullOrBlank()) {
+                        it.effectiveNetworkId != activeNetworkId
+                    } else if (!activeSubnetPrefix.isNullOrBlank()) {
+                        it.effectiveSubnet != activeSubnetPrefix
+                    } else {
+                        true
+                    }
                 }
 
                 val visibleActive = activeDevices.filter { !hiddenIps.contains(it.ipAddress) }
@@ -99,12 +112,28 @@ fun DeviceSelectionDialog(
                 }
 
                 if (visibleActive.isEmpty()) {
-                    Text(
-                        text = if (isScanning) "Searching active Wi-Fi for TVs..." else "No TVs found on this Wi-Fi yet.\nTap 'Scan Wi-Fi' to discover devices.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.textSecondary,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isScanning) "Searching active Wi-Fi for TVs..." else "No TVs found on this Wi-Fi yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.textSecondary,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                        if (!isScanning) {
+                            OutlinedButton(
+                                onClick = onScanRequested,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text("Scan Wi-Fi", fontSize = 11.sp, color = palette.primaryAccent)
+                            }
+                        }
+                    }
                 } else {
                     visibleActive.forEach { device ->
                         Row(
