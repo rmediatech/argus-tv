@@ -49,14 +49,14 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     private fun getDadb(ip: String, port: Int): Dadb {
         return dadbCache.computeIfAbsent("$ip:$port") {
-            Dadb.create(ip, port, keyPair)
+            Dadb.create(ip, port, keyPair, 1500, 1500)
         }
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(1, TimeUnit.SECONDS)
-        .writeTimeout(1, TimeUnit.SECONDS)
-        .readTimeout(1, TimeUnit.SECONDS)
+        .connectTimeout(500, TimeUnit.MILLISECONDS)
+        .writeTimeout(500, TimeUnit.MILLISECONDS)
+        .readTimeout(500, TimeUnit.MILLISECONDS)
         .build()
 
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
@@ -158,7 +158,8 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                     val body = response.body?.string().orEmpty()
                     val json = JSONObject(body)
                     val rawName = json.optString("name").ifBlank { json.optString("device_name", "") }
-                    val bssid = json.optString("bssid", host)
+                        .replace("&#39;", "'").replace("&amp;", "&").replace("&quot;", "\"")
+                    val bssid = json.optString("bssid").ifBlank { json.optString("hotspot_bssid").ifBlank { host } }
                     val isEthernet = json.optBoolean("ethernet_connected", false)
 
                     // Dynamic manufacturer & model discovery

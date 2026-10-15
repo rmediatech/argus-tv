@@ -65,8 +65,19 @@ class ArgusSessionState(
     private var livenessJob: Job? = null
 
     init {
+        cleanStaleDevices()
         restoreInitialDevice()
         startLivenessMonitoring()
+    }
+
+    private fun cleanStaleDevices() {
+        val cleaned = discoveredDevices.filterNot {
+            it.deviceType == DeviceType.GENERIC && (it.port == 8080 || it.port == 80 || it.port == 60000)
+        }
+        if (cleaned.size != discoveredDevices.size) {
+            discoveredDevices = cleaned
+            prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(cleaned)).apply()
+        }
     }
 
     private fun restoreInitialDevice() {

@@ -68,8 +68,13 @@ class UniversalTvScanner(
 
         fun recordDevice(device: RemoteDevice) {
             val existing = foundDevices[device.ipAddress]
-            if (existing == null || existing.deviceType == DeviceType.GENERIC) {
+            val shouldUpdate = existing == null || 
+                (existing.deviceType == DeviceType.GENERIC && device.deviceType != DeviceType.GENERIC) ||
+                (existing.port != 5555 && device.port == 5555)
+            if (shouldUpdate) {
+                val safeId = if (device.id.isBlank() || device.id.endsWith("_")) "${device.deviceType.name.lowercase()}_${device.ipAddress}" else device.id
                 val enriched = device.copy(
+                    id = safeId,
                     macAddress = if (device.macAddress.isNullOrBlank()) {
                         arpMappings[device.ipAddress] ?: WakeOnLan.getMacFromArp(device.ipAddress)
                     } else device.macAddress,
@@ -106,12 +111,13 @@ class UniversalTvScanner(
                     launch {
                         concurrencyLimit.withPermit {
                             for (port in candidatePorts) {
-                                if (foundDevices.containsKey(ip)) break
+                                val current = foundDevices[ip]
+                                if (current != null && current.deviceType != DeviceType.GENERIC && current.port == 5555) break
                                 if (isPortReachable(ip, port, 120)) {
                                     val dev = registry.probeHost(ip, port)
                                     if (dev != null) {
                                         recordDevice(dev)
-                                        break
+                                        if (dev.deviceType != DeviceType.GENERIC) break
                                     }
                                 }
                             }
@@ -190,10 +196,15 @@ class UniversalTvScanner(
                 acquire()
             }
 
-            DatagramSocket().use { socket ->
-                socket.broadcast = true
-                socket.soTimeout = 800
+            val socket = DatagramSocket()
+            socket.broadcast = true
+            socket.soTimeout = 400
 
+            coroutineContext.job.invokeOnCompletion {
+                try { socket.close() } catch (_: Exception) {}
+            }
+
+            try {
                 val targets = mutableListOf<InetAddress>()
                 try { targets.add(InetAddress.getByName("239.255.255.250")) } catch (_: Exception) {}
                 if (!broadcastIp.isNullOrBlank()) {
@@ -229,9 +240,11 @@ class UniversalTvScanner(
                         val ip = responsePacket.address.hostAddress ?: continue
                         val responseStr = String(responsePacket.data, 0, responsePacket.length, Charsets.UTF_8)
 
-                        val dev = registry.dispatchSsdp(ip, 8008, responseStr)
-                        if (dev != null) {
-                            onDeviceDiscovered(dev)
+                        launch {
+                            val dev = registry.dispatchSsdp(ip, 8008, responseStr)
+                            if (dev != null) {
+                                onDeviceDiscovered(dev)
+                            }
                         }
                     } catch (_: SocketTimeoutException) {
                         // Socket read timed out, continue receiving until overall deadline
@@ -240,6 +253,8 @@ class UniversalTvScanner(
                         break
                     }
                 }
+            } finally {
+                try { socket.close() } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             Log.w(TAG, "SSDP scanner error: ${e.message}")

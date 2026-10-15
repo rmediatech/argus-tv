@@ -11,6 +11,7 @@ import dadb.Dadb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -46,7 +47,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     private fun getDadb(ip: String, port: Int): Dadb {
         return dadbCache.computeIfAbsent("$ip:$port") {
-            Dadb.create(ip, port, keyPair)
+            Dadb.create(ip, port, keyPair, 1500, 1500)
         }
     }
 
@@ -190,34 +191,29 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
         try {
             Socket().use { s ->
-                s.connect(InetSocketAddress(host, port), 350)
+                s.connect(InetSocketAddress(host, port), 250)
             }
-            var model = "Amazon Fire OS"
+            var model = "Amazon Fire TV"
             var name = "Fire TV Stick"
-            var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
+            val mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
 
             try {
-                val dadb = getDadb(host, port)
-                val rawModel = dadb.shell("getprop ro.product.model").allOutput.trim()
-                if (rawModel.isNotBlank()) {
-                    model = when (rawModel) {
-                        "AFTKA002" -> "Fire TV Stick 4K Max"
-                        "AFTMM" -> "Fire TV Stick 4K"
-                        "AFTSSS" -> "Fire TV Stick 4K Max"
-                        "AFTT", "AFTKM" -> "Fire TV Stick"
-                        "AFTB" -> "Fire TV Cube"
-                        else -> "Fire TV ($rawModel)"
+                withTimeout(400) {
+                    val quickDadb = Dadb.create(host, port, keyPair, 400, 400)
+                    val rawModel = quickDadb.shell("getprop ro.product.model").allOutput.trim()
+                    if (rawModel.isNotBlank()) {
+                        model = when (rawModel) {
+                            "AFTKA002" -> "Fire TV Stick 4K Max"
+                            "AFTMM" -> "Fire TV Stick 4K"
+                            "AFTSSS" -> "Fire TV Stick 4K Max"
+                            "AFTT", "AFTKM" -> "Fire TV Stick"
+                            "AFTB" -> "Fire TV Cube"
+                            else -> "Fire TV ($rawModel)"
+                        }
+                        name = model
                     }
-                    name = model
                 }
-
-                if (mac.isNullOrBlank()) {
-                    val linkOut = dadb.shell("ip link").allOutput
-                    val wlanMatch = Regex("""\bwlan0\b[^\n]*\n\s*link/ether\s+([0-9a-fA-F:]{17})""").find(linkOut)
-                    val ethMatch = Regex("""\beth0\b[^\n]*\n\s*link/ether\s+([0-9a-fA-F:]{17})""").find(linkOut)
-                    mac = wlanMatch?.groupValues?.get(1)?.lowercase() ?: ethMatch?.groupValues?.get(1)?.lowercase()
-                }
-            } catch (_: Exception) {}
+            } catch (_: Throwable) {}
 
             RemoteDevice(
                 id = "firetv_$host",
