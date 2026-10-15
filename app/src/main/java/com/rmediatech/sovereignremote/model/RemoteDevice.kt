@@ -46,8 +46,26 @@ data class RemoteDevice(
     val subnetPrefix: String? = null,
     val networkId: String? = null
 ) {
+    val isIpv6: Boolean
+        get() = ipAddress.contains(":")
+
+    val formattedHost: String
+        get() = if (isIpv6 && !ipAddress.startsWith("[")) "[${ipAddress.trim()}]" else ipAddress.trim()
+
+    val httpBaseUrl: String
+        get() = "http://$formattedHost:$port"
+
     val effectiveSubnet: String
-        get() = subnetPrefix?.takeIf { it.isNotBlank() } ?: ipAddress.substringBeforeLast(".", "")
+        get() {
+            if (!subnetPrefix.isNullOrBlank()) return subnetPrefix
+            return if (isIpv6) {
+                val clean = ipAddress.trim().removePrefix("[").removeSuffix("]")
+                val lastColon = clean.lastIndexOf(':')
+                if (lastColon > 0) clean.substring(0, lastColon) else clean
+            } else {
+                ipAddress.substringBeforeLast(".", "")
+            }
+        }
 
     val effectiveNetworkId: String
         get() = networkId?.takeIf { it.isNotBlank() } ?: "net_subnet_$effectiveSubnet"

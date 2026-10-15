@@ -79,6 +79,10 @@ object NetworkEnvironmentManager {
                                     val info = computeSubnetInfo(addr, la.prefixLength, gwIp, gwMac)
                                     if (info != null) {
                                         Log.d(TAG, "Resolved active subnet via ConnectivityManager: $info (networkId=${info.networkId})")
+                                        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+                                            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.NETWORK,
+                                            "Active subnet resolved: ${info.localIp}/${info.prefixLength} (gw=${info.gatewayIp}, gwMac=${info.gatewayMac}, netId=${info.networkId})"
+                                        )
                                         return info
                                     }
                                 }

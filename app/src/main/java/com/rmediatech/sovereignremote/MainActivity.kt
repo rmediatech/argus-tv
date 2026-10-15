@@ -22,13 +22,30 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,
+            "MainActivity.onResume() — active Wi-Fi check"
+        )
         if (::sessionState.isInitialized) {
             sessionState.onResumeNetworkCheck()
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,
+            "MainActivity.onPause() — backgrounding"
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.rmediatech.sovereignremote.logging.SovereignLogger.init(applicationContext)
+        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,
+            "MainActivity.onCreate() — bootstrapping Argus session"
+        )
         val registry = TvProtocolRegistry(applicationContext)
         val scanner = UniversalTvScanner(applicationContext, registry)
         sessionState = ArgusSessionState(applicationContext, lifecycleScope, registry, scanner)

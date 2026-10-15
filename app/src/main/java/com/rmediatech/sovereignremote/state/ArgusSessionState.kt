@@ -91,6 +91,10 @@ class ArgusSessionState(
 
     fun selectDevice(device: RemoteDevice) {
         currentDevice = device
+        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,
+            "Device selected: [${device.deviceType}] ${device.name} (${device.ipAddress}:${device.port})"
+        )
         prefs.edit()
             .putString("last_selected_ip", device.ipAddress)
             .putString("last_selected_ip_for_${device.effectiveNetworkId}", device.ipAddress)
@@ -167,6 +171,10 @@ class ArgusSessionState(
         activeSubnetInfo = freshNetInfo
         val activeNetId = freshNetInfo?.networkId ?: ""
         val activePrefix = freshNetInfo?.subnetPrefix ?: ""
+        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.DISCOVERY,
+            "runDiscovery() triggered (activeNetId=$activeNetId, subnet=$activePrefix)"
+        )
         val netLastIp = if (activeNetId.isNotBlank()) {
             prefs.getString("last_selected_ip_for_$activeNetId", null)
                 ?: if (activePrefix.isNotBlank()) prefs.getString("last_selected_ip_for_$activePrefix", null) else null
@@ -190,7 +198,7 @@ class ArgusSessionState(
         scope.launch {
             try {
                 val results = scanner.discoverAll(
-                    timeoutMs = 6500,
+                    timeoutMs = 3500,
                     onDeviceFound = { liveDev ->
                         val sanitized = liveDev.copy(
                             name = SovereignSanitizer.sanitizeDeviceName(liveDev.name),
@@ -295,12 +303,20 @@ class ArgusSessionState(
         }
 
         val t0 = System.currentTimeMillis()
+        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
+            "sendKey($key) -> ${device.name} (${device.ipAddress}:${device.port})"
+        )
         scope.launch {
             val result = registry.sendKey(device, key)
             val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1)
             if (result.isSuccess) {
                 lastAckLatencyMs = elapsed
                 isAckActive = true
+                com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+                    com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
+                    "sendKey($key) ACK received in ${elapsed}ms from ${device.ipAddress}"
+                )
                 if (key != RemoteKey.POWER) {
                     livenessState = DeviceLivenessState.ONLINE
                 }
@@ -311,6 +327,10 @@ class ArgusSessionState(
             } else {
                 lastAckLatencyMs = -1L
                 isAckActive = true
+                com.rmediatech.sovereignremote.logging.SovereignLogger.w(
+                    com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
+                    "sendKey($key) FAILED on ${device.ipAddress}: ${result.exceptionOrNull()?.message}"
+                )
                 scope.launch {
                     delay(800)
                     isAckActive = false

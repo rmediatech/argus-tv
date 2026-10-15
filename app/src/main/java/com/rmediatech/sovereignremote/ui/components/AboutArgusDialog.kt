@@ -83,6 +83,22 @@ fun AboutArgusDialog(
                     fontSize = 11.sp,
                     color = palette.textSecondary
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = palette.border)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "DIAGNOSTIC AUDIT LOGS",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.textSecondary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = com.rmediatech.sovereignremote.logging.SovereignLogger.getLogFilePath() ?: "Persistent local logs: files/logs/argus.log",
+                    fontSize = 10.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    color = palette.textSecondary
+                )
             }
         },
         confirmButton = {

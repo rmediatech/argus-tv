@@ -68,4 +68,12 @@ object SovereignSanitizer {
     fun isValidPort(port: Int): Boolean {
         return port in 1..65535
     }
+
+    /**
+     * Strips raw ANSI escape sequences and non-printable control characters from arbitrary strings.
+     */
+    fun sanitizeAnsi(input: String): String {
+        val noAnsi = ANSI_ESCAPE_REGEX.replace(input, "")
+        return CONTROL_CHAR_REGEX.replace(noAnsi, "").trim()
+    }
 }

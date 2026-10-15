@@ -7,27 +7,37 @@ import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import dadb.AdbKeyPair
 import dadb.Dadb
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
+class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
+    override val protocolId: String = "googletv"
     override val deviceType: DeviceType = DeviceType.GOOGLE_TV
     override val defaultPort: Int = 8008
+
+    override val signature = ProtocolSignature(
+        protocolId = protocolId,
+        deviceType = deviceType,
+        ssdpSearchTargets = listOf("urn:dial-multiscreen-org:service:dial:1", "ssdp:all"),
+        ssdpHeaderMatchers = listOf("eureka", "google", "chromecast", "googletv"),
+        candidatePorts = listOf(8008, 5555)
+    )
 
     private val dadbCache = ConcurrentHashMap<String, Dadb>()
 
     private val keyPair: AdbKeyPair by lazy {
-        val keyDir = File(context.filesDir, "adb")
+        val keyDir = context?.filesDir?.let { File(it, "adb") } ?: File(System.getProperty("java.io.tmpdir", "/tmp"), "adb")
         keyDir.mkdirs()
         val privKey = File(keyDir, "adbkey")
         val pubKey = File(keyDir, "adbkey.pub")
@@ -58,65 +68,52 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
             RemoteKey.DOWN -> 20
             RemoteKey.LEFT -> 21
             RemoteKey.RIGHT -> 22
-            RemoteKey.SELECT -> 66
+            RemoteKey.SELECT -> 23
             RemoteKey.VOLUME_UP -> 24
             RemoteKey.VOLUME_DOWN -> 25
             RemoteKey.MUTE -> 164
             RemoteKey.PLAY_PAUSE -> 85
             RemoteKey.REWIND -> 89
             RemoteKey.FAST_FORWARD -> 90
-            RemoteKey.INFO -> 82
+            RemoteKey.INFO -> 165
         }
 
-        // Special handling for POWER key:
-        if (key == RemoteKey.POWER) {
-            // 1. If TV is currently awake with ADB open, send power toggle (turns it OFF or toggles)
-            if (isPortOpen(device.ipAddress, 5555, 300)) {
-                try {
-                    val dadb = getDadb(device.ipAddress, 5555)
+        // 1. Primary: Direct ADB control via port 5555
+        if (isPortOpen(device.ipAddress, 5555, 300)) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+
+                if (key == RemoteKey.POWER) {
+                    val pwrState = dadb.shell("dumpsys power").allOutput
+                    val isAsleep = pwrState.contains("mWakefulness=Asleep") ||
+                        pwrState.contains("Display Power: state=OFF") ||
+                        pwrState.contains("mHoldingDisplaySuspendBlocker=false")
+
                     dadb.shell("input keyevent $keycode")
                     Log.d("GoogleTvProtocol", "Sent ADB POWER keyevent $keycode to ${device.ipAddress}")
-                    return@withContext Result.success(Unit)
-                } catch (e: Exception) {
-                    Log.w("GoogleTvProtocol", "ADB power toggle failed on ${device.ipAddress}: ${e.message}")
-                    dadbCache.remove("${device.ipAddress}:5555")
-                }
-            }
 
-            // 2. If TV is unreachable / sleeping, transmit Wake-on-LAN magic packet to power it ON!
-            val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
-            if (!mac.isNullOrBlank()) {
-                Log.i("GoogleTvProtocol", "TV ${device.ipAddress} is sleeping. Broadcasting WoL to MAC $mac...")
-                com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
-
-                // Background watcher: Once TV boots and port 5555 opens, send KEYCODE_WAKEUP (224) to turn on display
-                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                    for (attempt in 1..15) {
-                        kotlinx.coroutines.delay(300)
-                        if (isPortOpen(device.ipAddress, 5555, 200)) {
+                    if (isAsleep) {
+                        val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                        if (!mac.isNullOrBlank()) {
+                            Log.i("GoogleTvProtocol", "TV ${device.ipAddress} is sleeping. Broadcasting WoL to MAC $mac...")
+                            com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
+                        }
+                        for (attempt in 1..4) {
+                            delay(250)
                             try {
-                                val dadb = getDadb(device.ipAddress, 5555)
-                                dadb.shell("input keyevent 224") // WAKEUP
-                                Log.i("GoogleTvProtocol", "TV screen awakened via ADB KEYCODE_WAKEUP on attempt $attempt")
-                                break
+                                dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
+                                val checkOut = dadb.shell("dumpsys power").allOutput
+                                if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
+                                    Log.i("GoogleTvProtocol", "TV screen awakened via ADB KEYCODE_WAKEUP on attempt $attempt")
+                                    break
+                                }
                             } catch (_: Exception) {}
                         }
                     }
+                } else {
+                    dadb.shell("input keyevent $keycode")
+                    Log.d("GoogleTvProtocol", "Sent ADB keyevent $keycode to ${device.ipAddress}")
                 }
-                return@withContext Result.success(Unit)
-            } else {
-                return@withContext Result.failure(
-                    IOException("Cannot wake Google TV: MAC address unknown. Please power TV on once to discover its MAC address.")
-                )
-            }
-        }
-
-        // 1. Direct zero-latency ADB injection if port 5555 is open
-        if (isPortOpen(device.ipAddress, 5555, 250)) {
-            try {
-                val dadb = getDadb(device.ipAddress, 5555)
-                dadb.shell("input keyevent $keycode")
-                Log.d("GoogleTvProtocol", "Sent ADB keyevent $keycode to ${device.ipAddress}")
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
                 Log.w("GoogleTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
@@ -137,7 +134,7 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val url = "http://${device.ipAddress}:8008/apps/$appName"
+            val url = "http://${device.formattedHost}:8008/apps/$appName"
             val request = Request.Builder().url(url).post("".toRequestBody()).build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful || response.code == 201) {
@@ -151,16 +148,17 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
         }
     }
 
-    override suspend fun probe(ip: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
+    override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
         try {
-            val url = "http://$ip:8008/setup/eureka_info"
+            val formattedHost = if (host.contains(":") && !host.startsWith("[")) "[$host]" else host
+            val url = "http://$formattedHost:8008/setup/eureka_info"
             val request = Request.Builder().url(url).get().build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
                     val json = JSONObject(body)
                     val rawName = json.optString("name").ifBlank { json.optString("device_name", "") }
-                    val bssid = json.optString("bssid", ip)
+                    val bssid = json.optString("bssid", host)
                     val isEthernet = json.optBoolean("ethernet_connected", false)
 
                     // Dynamic manufacturer & model discovery
@@ -174,8 +172,8 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
 
                     val displayName = when {
                         rawName.isNotBlank() -> rawName
-                        modelNameFromEureka.isNotBlank() -> "$modelNameFromEureka ($ip)"
-                        else -> "Google TV ($ip)"
+                        modelNameFromEureka.isNotBlank() -> "$modelNameFromEureka ($host)"
+                        else -> "Google TV ($host)"
                     }
 
                     val resolvedModel = when {
@@ -191,18 +189,18 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
                     }
 
                     // Extract MAC address from ARP, BSSID (if standard MAC format), or active ADB interface
-                    var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
+                    var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
                     if (mac.isNullOrBlank() && bssid.matches(Regex("""([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}"""))) {
                         mac = bssid.lowercase()
                     }
-                    if (mac.isNullOrBlank() && isPortOpen(ip, 5555, 200)) {
-                        mac = extractMacFromAdb(ip, 5555)
+                    if (mac.isNullOrBlank() && isPortOpen(host, 5555, 200)) {
+                        mac = extractMacFromAdb(host, 5555)
                     }
 
                     RemoteDevice(
                         id = "googletv_$bssid",
                         name = displayName,
-                        ipAddress = ip,
+                        ipAddress = host,
                         port = 8008,
                         deviceType = DeviceType.GOOGLE_TV,
                         modelName = resolvedModel,
@@ -214,6 +212,10 @@ class GoogleTvProtocol(private val context: Context) : SmartTvProtocol {
         } catch (_: Exception) {
             null
         }
+    }
+
+    override suspend fun probeSsdp(host: String, port: Int, ssdpPayload: String): RemoteDevice? {
+        return probe(host, 8008)
     }
 
     private fun extractMacFromAdb(ip: String, port: Int): String? {

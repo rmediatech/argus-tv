@@ -5,30 +5,35 @@ import android.util.Log
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
-import com.rmediatech.sovereignremote.net.WakeOnLan
 import dadb.AdbKeyPair
 import dadb.AdbShellStream
 import dadb.Dadb
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 
-class FireTvProtocol(private val context: Context) : SmartTvProtocol {
+class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
+    override val protocolId: String = "firetv"
     override val deviceType: DeviceType = DeviceType.FIRE_TV
     override val defaultPort: Int = 5555
+
+    override val signature = ProtocolSignature(
+        protocolId = protocolId,
+        deviceType = deviceType,
+        ssdpSearchTargets = listOf("urn:amazon:device:amzn-device:1", "ssdp:all"),
+        ssdpHeaderMatchers = listOf("amzn", "firetv", "amazon"),
+        candidatePorts = listOf(5555)
+    )
 
     private val dadbCache = ConcurrentHashMap<String, Dadb>()
     private val shellStreamCache = ConcurrentHashMap<String, AdbShellStream>()
 
     private val keyPair: AdbKeyPair by lazy {
-        val keyDir = File(context.filesDir, "adb")
+        val keyDir = context?.filesDir?.let { File(it, "adb") } ?: File(System.getProperty("java.io.tmpdir", "/tmp"), "adb")
         keyDir.mkdirs()
         val privKey = File(keyDir, "adbkey")
         val pubKey = File(keyDir, "adbkey.pub")
@@ -59,24 +64,17 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
     private fun getOrCreateShellStream(ip: String, port: Int, dadb: Dadb): AdbShellStream? {
         val key = "$ip:$port"
         val existing = shellStreamCache[key]
-        if (existing != null) return existing
+        if (existing != null) {
+            return existing
+        }
+
         return try {
-            val stream = dadb.openShell("")
-            shellStreamCache[key] = stream
-            stream
+            val newStream = dadb.openShell()
+            shellStreamCache[key] = newStream
+            newStream
         } catch (e: Exception) {
             Log.w("FireTvProtocol", "Could not open persistent shell on $key: ${e.message}")
             null
-        }
-    }
-
-    private fun invalidateCaches(ip: String, port: Int) {
-        val key = "$ip:$port"
-        shellStreamCache.remove(key)?.let { stream ->
-            try { stream.close() } catch (_: Exception) {}
-        }
-        dadbCache.remove(key)?.let { dadbInstance ->
-            try { dadbInstance.close() } catch (_: Exception) {}
         }
     }
 
@@ -96,77 +94,79 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
             RemoteKey.PLAY_PAUSE -> 85
             RemoteKey.REWIND -> 89
             RemoteKey.FAST_FORWARD -> 90
-            RemoteKey.INFO -> 82 // Menu key
+            RemoteKey.INFO -> 165
         }
 
-        // Fast-path for POWER / WAKE key:
-        if (key == RemoteKey.POWER) {
-            val isAwake = isPortOpen(device.ipAddress, device.port, 150)
-            if (!isAwake) {
-                // TV is sleeping / port 5555 closed. Blast instant WoL without waiting for Dadb TCP timeout!
-                val mac = device.macAddress ?: WakeOnLan.getMacFromArp(device.ipAddress)
-                if (!mac.isNullOrBlank()) {
-                    Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} is sleeping. Broadcasting instant WoL to $mac...")
-                    WakeOnLan.wake(mac, device.ipAddress, context)
-
-                    // Fast background watcher: when port 5555 opens, send KEYCODE_WAKEUP (224) to turn on display
-                    CoroutineScope(Dispatchers.IO).launch {
-                        for (attempt in 1..15) {
-                            delay(250)
-                            if (isPortOpen(device.ipAddress, device.port, 150)) {
-                                try {
-                                    val dadb = getDadb(device.ipAddress, device.port)
-                                    dadb.shell("input keyevent 224") // WAKEUP
-                                    Log.i("FireTvProtocol", "Fire TV display awakened via KEYCODE_WAKEUP on attempt $attempt")
-                                    break
-                                } catch (_: Exception) {}
-                            }
-                        }
-                    }
-                    return@withContext Result.success(Unit)
-                }
-                return@withContext Result.failure(
-                    IOException("Cannot wake Fire TV: MAC address unknown. Please turn TV on once to discover its MAC.")
-                )
-            }
-        }
-
-        // TV is awake or regular navigation key: try fast piped stream (<5ms), fall back to dadb.shell
         try {
             val dadb = getDadb(device.ipAddress, device.port)
+
+            if (key == RemoteKey.POWER) {
+                var isAsleep = false
+                try {
+                    val pwrState = dadb.shell("dumpsys power").allOutput
+                    isAsleep = pwrState.contains("mWakefulness=Asleep") ||
+                        pwrState.contains("Display Power: state=OFF") ||
+                        pwrState.contains("mHoldingDisplaySuspendBlocker=false")
+                } catch (_: Exception) {}
+
+                if (isAsleep) {
+                    val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                    if (!mac.isNullOrBlank()) {
+                        Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} is sleeping. Broadcasting instant WoL to $mac...")
+                        com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
+                    }
+
+                    try {
+                        dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
+                    } catch (_: Exception) {}
+
+                    for (attempt in 1..4) {
+                        delay(250)
+                        try {
+                            val checkOut = dadb.shell("dumpsys power").allOutput
+                            if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
+                                Log.i("FireTvProtocol", "Fire TV display awakened via KEYCODE_WAKEUP on attempt $attempt")
+                                break
+                            }
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    dadb.shell("input keyevent $keycode")
+                }
+                return@withContext Result.success(Unit)
+            }
+
+            // High-throughput fast path via persistent shell stream
             val stream = getOrCreateShellStream(device.ipAddress, device.port, dadb)
             if (stream != null) {
                 try {
-                    synchronized(stream) {
-                        stream.write("input keyevent $keycode\n")
-                    }
+                    stream.write("input keyevent $keycode\n")
                     Log.d("FireTvProtocol", "Piped key $key ($keycode) to ${device.ipAddress}")
                     return@withContext Result.success(Unit)
                 } catch (e: Exception) {
                     Log.w("FireTvProtocol", "Piped shell write failed, resetting stream: ${e.message}")
-                    shellStreamCache.remove("${device.ipAddress}:${device.port}")?.let {
-                        try { it.close() } catch (_: Exception) {}
-                    }
+                    shellStreamCache.remove("${device.ipAddress}:${device.port}")
+                    try { stream.close() } catch (_: Exception) {}
                 }
             }
 
-            // Fallback to direct shell command
+            // Fallback: standard shell execution
             dadb.shell("input keyevent $keycode")
             Log.d("FireTvProtocol", "Successfully sent key $key ($keycode) to ${device.ipAddress}")
-            return@withContext Result.success(Unit)
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.w("FireTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
-            invalidateCaches(device.ipAddress, device.port)
+            dadbCache.remove("${device.ipAddress}:${device.port}")
+            shellStreamCache.remove("${device.ipAddress}:${device.port}")
 
-            // If POWER key was pressed and direct ADB failed, fallback to WoL
             if (key == RemoteKey.POWER) {
-                val mac = device.macAddress ?: WakeOnLan.getMacFromArp(device.ipAddress)
+                val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
                 if (!mac.isNullOrBlank()) {
                     Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} fallback: Broadcasting WoL to $mac...")
-                    WakeOnLan.wake(mac, device.ipAddress, context)
-                    return@withContext Result.success(Unit)
+                    com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
                 }
             }
+
             Result.failure(e)
         }
     }
@@ -175,8 +175,8 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
         try {
             val dadb = getDadb(device.ipAddress, device.port)
             val intent = when (appName.lowercase()) {
-                "youtube" -> "com.amazon.firetv.youtube/com.google.android.apps.youtube.tv.activity.ShellActivity"
                 "netflix" -> "com.netflix.ninja/.MainActivity"
+                "youtube" -> "com.amazon.firetv.youtube/com.google.android.apps.youtube.tv.activity.ShellActivity"
                 "prime" -> "com.amazon.avod/com.amazon.avod.client.activity.HomeScreenActivity"
                 else -> appName
             }
@@ -187,17 +187,17 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
         }
     }
 
-    override suspend fun probe(ip: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
+    override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
         try {
             Socket().use { s ->
-                s.connect(InetSocketAddress(ip, port), 400)
+                s.connect(InetSocketAddress(host, port), 350)
             }
             var model = "Amazon Fire OS"
             var name = "Fire TV Stick"
-            var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
+            var mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
 
             try {
-                val dadb = getDadb(ip, port)
+                val dadb = getDadb(host, port)
                 val rawModel = dadb.shell("getprop ro.product.model").allOutput.trim()
                 if (rawModel.isNotBlank()) {
                     model = when (rawModel) {
@@ -220,9 +220,9 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
             } catch (_: Exception) {}
 
             RemoteDevice(
-                id = "firetv_$ip",
+                id = "firetv_$host",
                 name = name,
-                ipAddress = ip,
+                ipAddress = host,
                 port = port,
                 deviceType = DeviceType.FIRE_TV,
                 modelName = model,
@@ -232,5 +232,9 @@ class FireTvProtocol(private val context: Context) : SmartTvProtocol {
         } catch (_: Exception) {
             null
         }
+    }
+
+    override suspend fun probeSsdp(host: String, port: Int, ssdpPayload: String): RemoteDevice? {
+        return probe(host, 5555)
     }
 }

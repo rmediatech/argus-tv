@@ -12,8 +12,17 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class RokuProtocol : SmartTvProtocol {
+    override val protocolId: String = "roku"
     override val deviceType: DeviceType = DeviceType.ROKU
     override val defaultPort: Int = 8060
+
+    override val signature = ProtocolSignature(
+        protocolId = protocolId,
+        deviceType = deviceType,
+        ssdpSearchTargets = listOf("roku:ecp"),
+        ssdpHeaderMatchers = listOf("roku:ecp", ":8060"),
+        candidatePorts = listOf(8060)
+    )
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(1, TimeUnit.SECONDS)
@@ -23,7 +32,7 @@ class RokuProtocol : SmartTvProtocol {
 
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val url = "http://${device.ipAddress}:${device.port}/keypress/${key.code}"
+            val url = "${device.httpBaseUrl}/keypress/${key.code}"
             val request = Request.Builder()
                 .url(url)
                 .post("".toRequestBody())
@@ -43,8 +52,7 @@ class RokuProtocol : SmartTvProtocol {
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            // ECP launch format: /launch/<appId>
-            val url = "http://${device.ipAddress}:${device.port}/launch/$appName"
+            val url = "${device.httpBaseUrl}/launch/$appName"
             val request = Request.Builder().url(url).post("".toRequestBody()).build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) Result.success(Unit) else Result.failure(IOException("Launch failed: ${response.code}"))
@@ -54,9 +62,10 @@ class RokuProtocol : SmartTvProtocol {
         }
     }
 
-    override suspend fun probe(ip: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
+    override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
         try {
-            val url = "http://$ip:$port/query/device-info"
+            val formattedHost = if (host.contains(":") && !host.startsWith("[")) "[$host]" else host
+            val url = "http://$formattedHost:$port/query/device-info"
             val request = Request.Builder().url(url).get().build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
@@ -69,15 +78,15 @@ class RokuProtocol : SmartTvProtocol {
                     val isEthernet = ethMacMatch != null && ethMacMatch.groupValues[1].isNotBlank()
                     val mac = ethMacMatch?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
                         ?: wifiMacMatch?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
-                        ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(ip)
+                        ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
 
                     val name = nameMatch?.groupValues?.get(1)?.ifBlank { "Roku Device" } ?: "Roku Device"
                     val model = modelMatch?.groupValues?.get(1)
 
                     RemoteDevice(
-                        id = "roku_$ip",
+                        id = "roku_$host",
                         name = name,
-                        ipAddress = ip,
+                        ipAddress = host,
                         port = port,
                         deviceType = DeviceType.ROKU,
                         modelName = model?.let { "Roku $it" } ?: "Roku",
@@ -89,5 +98,10 @@ class RokuProtocol : SmartTvProtocol {
         } catch (_: Exception) {
             null
         }
+    }
+
+    override suspend fun probeSsdp(host: String, port: Int, ssdpPayload: String): RemoteDevice? {
+        // Roku devices respond to M-SEARCH with location pointing to :8060
+        return probe(host, 8060)
     }
 }
