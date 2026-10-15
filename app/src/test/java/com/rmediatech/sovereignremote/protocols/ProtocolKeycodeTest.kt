@@ -99,5 +99,17 @@ class ProtocolKeycodeTest {
 
         assertEquals("Roku", DeviceType.ROKU.displayName)
         assertEquals(0xFFA855F7, DeviceType.ROKU.badgeColorHex)
+
+        assertEquals("Samsung", DeviceType.SAMSUNG_TIZEN.displayName)
+        assertEquals(0xFF3B82F6, DeviceType.SAMSUNG_TIZEN.badgeColorHex)
+
+        assertEquals("LG webOS", DeviceType.LG_WEBOS.displayName)
+        assertEquals(0xFFEC4899, DeviceType.LG_WEBOS.badgeColorHex)
+
+        assertEquals("Sony BRAVIA", DeviceType.SONY_BRAVIA.displayName)
+        assertEquals(0xFFFF5252, DeviceType.SONY_BRAVIA.badgeColorHex)
+
+        assertEquals("Vizio", DeviceType.VIZIO_SMARTCAST.displayName)
+        assertEquals(0xFF10B981, DeviceType.VIZIO_SMARTCAST.badgeColorHex)
     }
 }

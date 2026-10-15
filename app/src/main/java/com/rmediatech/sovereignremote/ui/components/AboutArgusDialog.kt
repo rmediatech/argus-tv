@@ -1,15 +1,19 @@
 package com.rmediatech.sovereignremote.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rmediatech.sovereignremote.logging.SovereignLogger
 import com.rmediatech.sovereignremote.ui.theme.LocalThemePalette
 
 /**
@@ -21,6 +25,11 @@ fun AboutArgusDialog(
     onDismiss: () -> Unit
 ) {
     val palette = LocalThemePalette.current
+    var showLogsDialog by remember { mutableStateOf(false) }
+
+    if (showLogsDialog) {
+        DiagnosticLogsDialog(onDismiss = { showLogsDialog = false })
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -52,7 +61,7 @@ fun AboutArgusDialog(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "The all-seeing, zero-cloud universal device & smart TV controller. Communicates directly with Google TV, Android TV, Fire TV, Roku, Smart TVs, and Wake-on-LAN hosts over your local network.",
+                    text = "The all-seeing, zero-cloud universal device & smart TV controller. Communicates directly with Samsung Tizen, LG webOS, Sony BRAVIA, Vizio SmartCast, Google TV, Android TV, Fire TV, Roku, and Wake-on-LAN hosts over your local network.",
                     fontSize = 13.sp,
                     color = palette.textSecondary
                 )
@@ -94,11 +103,32 @@ fun AboutArgusDialog(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = com.rmediatech.sovereignremote.logging.SovereignLogger.getLogFilePath() ?: "Persistent local logs: files/logs/argus.log",
+                    text = SovereignLogger.getLogFilePath() ?: "Persistent local logs: files/logs/argus.log",
                     fontSize = 10.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontFamily = FontFamily.Monospace,
                     color = palette.textSecondary
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showLogsDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primaryAccent),
+                    border = BorderStroke(1.dp, palette.primaryAccent.copy(alpha = 0.5f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Terminal,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = palette.primaryAccent
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "View Diagnostic Logs",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.primaryAccent
+                    )
+                }
             }
         },
         confirmButton = {

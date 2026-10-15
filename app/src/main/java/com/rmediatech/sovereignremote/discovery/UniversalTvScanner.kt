@@ -146,16 +146,17 @@ class UniversalTvScanner(
     suspend fun probeSpecificIp(ip: String): RemoteDevice? = withContext(Dispatchers.IO) {
         val activeNet = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         val mac = WakeOnLan.getMacFromArp(ip)
-        for (port in registry.getAllCandidatePorts()) {
-            if (isPortReachable(ip, port, 300)) {
-                val device = registry.probeHost(ip, port)
-                if (device != null) {
-                    return@withContext device.copy(
-                        macAddress = device.macAddress ?: mac,
-                        subnetPrefix = device.subnetPrefix ?: activeNet?.subnetPrefix,
-                        networkId = device.networkId ?: activeNet?.networkId
-                    )
-                }
+        val candidatePorts = registry.getAllCandidatePorts()
+        val openPorts = candidatePorts.filter { isPortReachable(ip, it, 200) }
+
+        if (openPorts.isNotEmpty()) {
+            val classified = SmartTvClassifier.probeAndConfirm(ip, openPorts, registry)
+            if (classified != null) {
+                return@withContext classified.device.copy(
+                    macAddress = classified.device.macAddress ?: mac,
+                    subnetPrefix = classified.device.subnetPrefix ?: activeNet?.subnetPrefix,
+                    networkId = classified.device.networkId ?: activeNet?.networkId
+                )
             }
         }
 

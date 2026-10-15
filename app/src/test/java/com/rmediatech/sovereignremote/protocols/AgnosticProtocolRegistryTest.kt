@@ -16,12 +16,16 @@ class AgnosticProtocolRegistryTest {
     @Test
     fun testProtocolRegistryContainsAllRegisteredProtocols() {
         val protocols = registry.getAllProtocols()
-        assertTrue("Registry must contain multiple protocols", protocols.size >= 4)
+        assertTrue("Registry must contain multiple protocols", protocols.size >= 8)
 
         val deviceTypes = protocols.map { it.deviceType }.toSet()
         assertTrue(deviceTypes.contains(DeviceType.ROKU))
         assertTrue(deviceTypes.contains(DeviceType.GOOGLE_TV))
         assertTrue(deviceTypes.contains(DeviceType.FIRE_TV))
+        assertTrue(deviceTypes.contains(DeviceType.SAMSUNG_TIZEN))
+        assertTrue(deviceTypes.contains(DeviceType.LG_WEBOS))
+        assertTrue(deviceTypes.contains(DeviceType.SONY_BRAVIA))
+        assertTrue(deviceTypes.contains(DeviceType.VIZIO_SMARTCAST))
         assertTrue(deviceTypes.contains(DeviceType.GENERIC))
     }
 
@@ -31,6 +35,10 @@ class AgnosticProtocolRegistryTest {
         assertTrue("Must include Roku port 8060", ports.contains(8060))
         assertTrue("Must include ADB port 5555", ports.contains(5555))
         assertTrue("Must include DIAL port 8008", ports.contains(8008))
+        assertTrue("Must include Samsung port 8001", ports.contains(8001))
+        assertTrue("Must include LG webOS port 3000", ports.contains(3000))
+        assertTrue("Must include Vizio port 7345", ports.contains(7345))
+        assertTrue("Must include Sony port 80", ports.contains(80))
         assertTrue("Candidate ports list must have no duplicates", ports.size == ports.distinct().size)
     }
 

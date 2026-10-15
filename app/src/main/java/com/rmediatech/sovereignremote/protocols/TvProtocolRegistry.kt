@@ -16,6 +16,10 @@ class TvProtocolRegistry(private val context: Context? = null) {
 
     init {
         register(RokuProtocol())
+        register(SamsungProtocol())
+        register(LgWebOsProtocol())
+        register(SonyBraviaProtocol())
+        register(VizioSmartCastProtocol())
         register(GoogleTvProtocol(context))
         register(FireTvProtocol(context))
         register(GenericDialProtocol())
@@ -68,6 +72,13 @@ class TvProtocolRegistry(private val context: Context? = null) {
     }
 
     /**
+     * Returns all registered protocols that monitor the specified candidate port.
+     */
+    fun getProtocolsForPort(port: Int): List<SmartTvProtocol> {
+        return protocols.values.filter { it.signature.candidatePorts.contains(port) }
+    }
+
+    /**
      * Inspects an incoming SSDP packet and matches the protocol that recognizes it.
      */
     fun matchSsdp(payload: String): SmartTvProtocol? {
@@ -84,19 +95,22 @@ class TvProtocolRegistry(private val context: Context? = null) {
      * Inspects an incoming SSDP packet and dispatches to the protocol that recognizes it.
      */
     suspend fun dispatchSsdp(host: String, port: Int, payload: String): RemoteDevice? {
+        val classified = com.rmediatech.sovereignremote.discovery.SmartTvClassifier.classifyFromSsdp(host, port, payload, this)
+        if (classified != null) return classified.device
+
         val protocol = matchSsdp(payload) ?: return null
-        return protocol.probeSsdp(host, port, payload) ?: protocol.probe(host, port)
+        val dev = protocol.probeSsdp(host, port, payload) ?: protocol.probe(host, port)
+        return dev?.let { com.rmediatech.sovereignremote.discovery.SmartTvClassifier.sanitizeDevice(it) }
     }
 
     /**
      * Probes an arbitrary host and port by consulting registered protocols that monitor that port.
      */
     suspend fun probeHost(host: String, port: Int): RemoteDevice? {
-        val candidates = protocols.values.filter { it.signature.candidatePorts.contains(port) }
-        val toTry = candidates.ifEmpty { protocols.values }
-        for (protocol in toTry) {
+        val candidates = getProtocolsForPort(port).ifEmpty { protocols.values }
+        for (protocol in candidates) {
             val dev = protocol.probe(host, port)
-            if (dev != null) return dev
+            if (dev != null) return com.rmediatech.sovereignremote.discovery.SmartTvClassifier.sanitizeDevice(dev)
         }
         return null
     }

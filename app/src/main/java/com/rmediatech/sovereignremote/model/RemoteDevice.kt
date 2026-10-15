@@ -6,6 +6,8 @@ enum class DeviceType(val displayName: String, val badgeColorHex: Long) {
     ROKU("Roku", 0xFFA855F7),              // Roku Electric Purple
     SAMSUNG_TIZEN("Samsung", 0xFF3B82F6),  // Samsung Blue
     LG_WEBOS("LG webOS", 0xFFEC4899),      // LG Ruby
+    SONY_BRAVIA("Sony BRAVIA", 0xFFFF5252),// Sony Crimson
+    VIZIO_SMARTCAST("Vizio", 0xFF10B981),  // Emerald Green
     GENERIC("Smart TV", 0xFF9CA3AF)        // Slate Gray
 }
 

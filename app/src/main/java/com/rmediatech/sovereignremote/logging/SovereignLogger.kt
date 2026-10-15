@@ -94,5 +94,28 @@ object SovereignLogger {
         return if (snapshot.size > limit) snapshot.takeLast(limit) else snapshot
     }
 
+    fun getFullLogContent(): String {
+        return try {
+            val file = logFile
+            if (file != null && file.exists()) {
+                file.readText()
+            } else {
+                ringBuffer.joinToString("\n")
+            }
+        } catch (_: Exception) {
+            ringBuffer.joinToString("\n")
+        }
+    }
+
+    fun clearLogs() {
+        ringBuffer.clear()
+        try {
+            val file = logFile
+            if (file != null && file.exists()) {
+                file.writeText("")
+            }
+        } catch (_: Exception) {}
+    }
+
     fun getLogFilePath(): String? = logFile?.absolutePath
 }
