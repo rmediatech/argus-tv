@@ -49,7 +49,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     private fun getDadb(ip: String, port: Int): Dadb {
         return dadbCache.computeIfAbsent("$ip:$port") {
-            Dadb.create(ip, port, keyPair, 1500, 1500)
+            Dadb.create(ip, port, keyPair)
         }
     }
 
@@ -60,6 +60,10 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         .build()
 
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
+        if (device.deviceType == DeviceType.FIRE_TV || device.name.contains("Fire", ignoreCase = true)) {
+            return@withContext Result.failure(IllegalStateException("Device is Amazon Fire TV"))
+        }
+
         val keycode = when (key) {
             RemoteKey.POWER -> 26
             RemoteKey.HOME -> 3

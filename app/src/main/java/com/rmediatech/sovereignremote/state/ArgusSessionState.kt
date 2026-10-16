@@ -290,10 +290,26 @@ class ArgusSessionState(
     }
 
     fun sendKey(key: RemoteKey) {
-        val device = currentDevice
+        var device = currentDevice
         if (device == null) {
             Toast.makeText(context, "Select or scan for a TV first", Toast.LENGTH_SHORT).show()
             return
+        }
+
+        // Auto-heal Fire TV device type and port if misassigned
+        val isAmazon = device.name.contains("Fire", ignoreCase = true) || 
+            device.modelName?.contains("Fire", ignoreCase = true) == true ||
+            com.rmediatech.sovereignremote.discovery.SmartTvClassifier.inferBrandFromMac(device.macAddress) == DeviceType.FIRE_TV
+        if (isAmazon && (device.deviceType != DeviceType.FIRE_TV || device.port != 5555)) {
+            device = device.copy(
+                deviceType = DeviceType.FIRE_TV,
+                port = 5555,
+                modelName = if (device.modelName.isNullOrBlank() || device.modelName == "Google TV") "Amazon Fire TV" else device.modelName
+            )
+            currentDevice = device
+            val updated = DeviceSerializer.merge(discoveredDevices, listOf(device))
+            discoveredDevices = updated
+            prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
         }
 
         if (key == RemoteKey.POWER) {

@@ -163,8 +163,24 @@ class TvProtocolRegistry(private val context: Context? = null) {
             getById("vizio_smartcast")
         ).filter { it.protocolId != primaryProtocol.protocolId }
 
+        val isAmazon = device.name.contains("Fire", ignoreCase = true) || 
+            device.modelName?.contains("Fire", ignoreCase = true) == true ||
+            com.rmediatech.sovereignremote.discovery.SmartTvClassifier.inferBrandFromMac(device.macAddress) == DeviceType.FIRE_TV
+
         for (candidate in candidateProtocols) {
-            val trialPorts = (candidate.signature.candidatePorts + listOf(device.port, candidate.defaultPort)).distinct()
+            if (isAmazon && candidate.deviceType != DeviceType.FIRE_TV) continue
+
+            val trialPorts = when (candidate.deviceType) {
+                DeviceType.FIRE_TV -> listOf(5555)
+                DeviceType.ROKU -> listOf(8060)
+                DeviceType.SAMSUNG_TIZEN -> listOf(8001, 8002)
+                DeviceType.LG_WEBOS -> listOf(3000, 3001)
+                DeviceType.SONY_BRAVIA -> listOf(80, 20060)
+                DeviceType.VIZIO_SMARTCAST -> listOf(7345, 9000)
+                DeviceType.GOOGLE_TV -> if (isAmazon) emptyList() else listOf(8008, 5555)
+                else -> listOf(candidate.defaultPort)
+            }
+
             for (trialPort in trialPorts) {
                 val trialDevice = device.copy(deviceType = candidate.deviceType, port = trialPort)
                 val trialResult = candidate.sendKey(trialDevice, key)
