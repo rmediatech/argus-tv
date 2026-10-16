@@ -35,6 +35,21 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     private val dadbCache = ConcurrentHashMap<String, Dadb>()
     private val shellStreamCache = ConcurrentHashMap<String, AdbShellStream>()
+    private val eventNodeCache = ConcurrentHashMap<String, String>()
+
+    private fun resolveEventNode(ip: String, dadb: Dadb): String {
+        return eventNodeCache.computeIfAbsent(ip) {
+            try {
+                val devices = dadb.shell("cat /proc/bus/input/devices").allOutput
+                val regex = Regex("""Handlers=.*?(event\d+)""")
+                val match = regex.findAll(devices).firstOrNull { it.value.contains("kbd") }
+                    ?: regex.find(devices)
+                match?.groupValues?.get(1) ?: "event0"
+            } catch (_: Exception) {
+                "event0"
+            }
+        }
+    }
 
     private val keyPair: AdbKeyPair by lazy {
         val keyDir = context?.filesDir?.let { File(it, "adb") } ?: File(System.getProperty("java.io.tmpdir", "/tmp"), "adb")
@@ -125,10 +140,10 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.INFO -> 139
         }
 
-        val fastCmd = "sendevent /dev/input/event0 1 $scancode 1; sendevent /dev/input/event0 0 0 0; sendevent /dev/input/event0 1 $scancode 0; sendevent /dev/input/event0 0 0 0 || input keyevent $keycode"
-
         try {
             val dadb = getDadb(device.ipAddress, 5555)
+            val eventNode = resolveEventNode(device.ipAddress, dadb)
+            val fastCmd = "sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0 || input keyevent $keycode"
 
             if (key == RemoteKey.POWER) {
                 var isAsleep = false

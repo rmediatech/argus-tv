@@ -178,7 +178,7 @@ object SmartTvClassifier {
                 val dev = fireTvProto?.probe(host, 5555)
                 return@withContext sanitizeDevice(dev ?: RemoteDevice(
                     id = "firetv_$host",
-                    name = "Fire TV Stick",
+                    name = "Amazon Fire TV",
                     ipAddress = host,
                     port = 5555,
                     deviceType = DeviceType.FIRE_TV,
