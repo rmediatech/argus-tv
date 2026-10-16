@@ -1,14 +1,17 @@
 package com.rmediatech.sovereignremote.model
 
 enum class DeviceType(val displayName: String, val badgeColorHex: Long) {
-    GOOGLE_TV("Google TV", 0xFF00E5FF),    // Neon Cyan
-    FIRE_TV("Fire TV", 0xFFFF9900),        // Amazon Flame Orange
-    ROKU("Roku", 0xFFA855F7),              // Roku Electric Purple
-    SAMSUNG_TIZEN("Samsung", 0xFF3B82F6),  // Samsung Blue
-    LG_WEBOS("LG webOS", 0xFFEC4899),      // LG Ruby
-    SONY_BRAVIA("Sony BRAVIA", 0xFFFF5252),// Sony Crimson
-    VIZIO_SMARTCAST("Vizio", 0xFF10B981),  // Emerald Green
-    GENERIC("Smart TV", 0xFF9CA3AF)        // Slate Gray
+    GOOGLE_TV("Google TV", 0xFF00E5FF),        // Neon Cyan
+    FIRE_TV("Fire TV", 0xFFFF9900),            // Amazon Flame Orange
+    ROKU("Roku", 0xFFA855F7),                  // Roku Electric Purple
+    SAMSUNG_TIZEN("Samsung", 0xFF3B82F6),      // Samsung Blue
+    LG_WEBOS("LG webOS", 0xFFEC4899),          // LG Ruby
+    SONY_BRAVIA("Sony BRAVIA", 0xFFFF5252),    // Sony Crimson
+    VIZIO_SMARTCAST("Vizio", 0xFF10B981),      // Emerald Green
+    MEDIA_PLAYER("Media Player", 0xFFF59E0B),  // DLNA / UPnP Smart Speaker
+    APPLE_TV("Apple TV", 0xFFE5E7EB),          // Apple TV / AirPlay
+    WORKSTATION("Workstation", 0xFF14B8A6),    // Sovereign Outpost / PC
+    GENERIC("Smart Device", 0xFF9CA3AF)        // Slate Gray
 }
 
 enum class DeviceLivenessState(val label: String, val colorHex: Long) {

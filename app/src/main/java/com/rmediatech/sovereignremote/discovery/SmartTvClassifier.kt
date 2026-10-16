@@ -147,6 +147,10 @@ object SmartTvClassifier {
             prefix in setOf("0013A9", "F0BF97", "0024BE", "FC0FE6", "00014A", "AC9B0A", "3CD92B", "544249", "709E29") -> DeviceType.SONY_BRAVIA
             // Vizio, Inc. (SmartCast)
             prefix in setOf("0019FB", "340286", "ECADB8", "00085B", "A48D3B") -> DeviceType.VIZIO_SMARTCAST
+            // Apple, Inc. (Apple TV, AirPlay)
+            prefix in setOf("0017F2", "0019E3", "001B63", "001C43", "001D4F", "001E52", "001E8C", "001F5B", "D4619D", "F81EAF") -> DeviceType.APPLE_TV
+            // Sonos & Smart Audio Speakers
+            prefix in setOf("000E58", "48A6B8", "5C2C46", "7828CA", "949F3E", "B8E937") -> DeviceType.MEDIA_PLAYER
             else -> null
         }
     }
@@ -241,26 +245,16 @@ object SmartTvClassifier {
             if (dev != null) return@withContext sanitizeDevice(dev.copy(macAddress = mac ?: dev.macAddress))
         }
 
-        // 8. OUI fallback if brand was inferred
-        if (inferredBrand != null) {
-            return@withContext sanitizeDevice(RemoteDevice(
-                id = "${inferredBrand.name.lowercase()}_$host",
-                name = "${inferredBrand.displayName} ($host)",
-                ipAddress = host,
-                port = discoveredPort,
-                deviceType = inferredBrand,
-                modelName = inferredBrand.displayName,
-                macAddress = mac
-            ))
-        }
-
-        // 9. Generic fallback
+        // 8. OUI or Generic fallback
+        val fallbackType = inferredBrand ?: DeviceType.GENERIC
+        val fallbackName = if (inferredBrand != null) "${inferredBrand.displayName} ($host)" else "Smart Device ($host)"
         sanitizeDevice(RemoteDevice(
-            id = "generic_$host",
-            name = "Smart TV ($host)",
+            id = "${fallbackType.name.lowercase()}_$host",
+            name = fallbackName,
             ipAddress = host,
             port = discoveredPort,
-            deviceType = DeviceType.GENERIC,
+            deviceType = fallbackType,
+            modelName = fallbackType.displayName,
             macAddress = mac
         ))
     }
