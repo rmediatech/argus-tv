@@ -79,7 +79,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.PLAY_PAUSE -> 85
             RemoteKey.REWIND -> 89
             RemoteKey.FAST_FORWARD -> 90
-            RemoteKey.INFO -> 165
+            RemoteKey.INFO -> 82 // Android KEYCODE_MENU (Options / Menu on Google TV)
         }
 
         // 1. Primary: Direct ADB control via port 5555
