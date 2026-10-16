@@ -20,11 +20,26 @@ help:
 	@echo "  make build        - Compile debug APK using Gradle"
 	@echo "  make release      - Compile signed release AAB bundle and APK"
 	@echo "  make release-sign - Full build, sign, and GPG provenance seal (SOVEREIGN-SIGN-01)"
+	@echo "  make deploy-phone - Auto-stream and deploy release APK to phone via xua bridge"
 	@echo "  make install      - Push and install debug APK to connected Android device"
 	@echo "  make run          - Launch Argus on connected Android device"
 	@echo "  make logs         - Stream device logcat logs"
 	@echo "  make devices      - List connected ADB devices (USB & Wi-Fi)"
 	@echo "  make clean        - Clean build caches and outputs"
+
+deploy-phone:
+	@echo "📲 Deploying release APK to phone via xua bridge (SOP-ANDROID-DEBUG-01)..."
+	@scp dist/release-v1.0.0/argus-v1.0.0.apk xua:/home/rick/downloads/argus-v1.0.0.apk
+	@CONNECT_PORT=$$(ssh xua "/home/rick/adb-sdk mdns services | grep -E 'R5GL1218H5J.*_adb-tls-connect' | awk '{print \$$3}' | cut -d: -f2 | head -n 1"); \
+	if [ -n "$$CONNECT_PORT" ]; then \
+		echo "Detected phone connect port: $$CONNECT_PORT"; \
+		ssh xua "/home/rick/adb-sdk connect 192.168.1.168:$$CONNECT_PORT"; \
+		ssh xua "/home/rick/adb-sdk -s 192.168.1.168:$$CONNECT_PORT install -r /home/rick/downloads/argus-v1.0.0.apk"; \
+		ssh xua "/home/rick/adb-sdk -s 192.168.1.168:$$CONNECT_PORT shell am start -n $(PACKAGE_NAME)/.MainActivity"; \
+		echo "🎉 Argus deployed and launched successfully on phone!"; \
+	else \
+		echo "❌ Phone not detected on mDNS. Ensure Wireless Debugging is ON in Developer options."; \
+	fi
 
 build:
 	JAVA_HOME=$(JAVA_HOME) ./gradlew assembleDebug
