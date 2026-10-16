@@ -319,18 +319,32 @@ class ArgusSessionState(
             "sendKey($key) -> ${device.name} (${device.ipAddress}:${device.port})"
         )
         scope.launch {
-            val result = registry.sendKey(device, key)
-            val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1)
-            if (result.isSuccess) {
-                lastAckLatencyMs = elapsed
+            val dispatch = registry.sendKeyWithAutoPromotion(device, key)
+            if (dispatch.isSuccess) {
+                lastAckLatencyMs = dispatch.elapsedMs
                 isAckActive = true
                 com.rmediatech.sovereignremote.logging.SovereignLogger.i(
                     com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
-                    "sendKey($key) ACK received in ${elapsed}ms from ${device.ipAddress}"
+                    "sendKey($key) ACK received in ${dispatch.elapsedMs}ms from ${device.ipAddress}"
                 )
                 if (key != RemoteKey.POWER) {
                     livenessState = DeviceLivenessState.ONLINE
                 }
+
+                // If device was auto-promoted to a new winning protocol, update state & persistence
+                val promoted = dispatch.promotedDevice
+                if (promoted != null && (promoted.deviceType != device.deviceType || promoted.port != device.port)) {
+                    currentDevice = promoted
+                    val updated = DeviceSerializer.merge(discoveredDevices, listOf(promoted))
+                    discoveredDevices = updated
+                    prefs.edit()
+                        .putString("saved_devices_json", DeviceSerializer.serialize(updated))
+                        .putString("last_selected_ip", promoted.ipAddress)
+                        .putString("last_selected_ip_for_${promoted.effectiveNetworkId}", promoted.ipAddress)
+                        .apply()
+                    Toast.makeText(context, "Promoted to ${promoted.deviceType.displayName}!", Toast.LENGTH_SHORT).show()
+                }
+
                 scope.launch {
                     delay(350)
                     isAckActive = false
@@ -340,7 +354,7 @@ class ArgusSessionState(
                 isAckActive = true
                 com.rmediatech.sovereignremote.logging.SovereignLogger.w(
                     com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
-                    "sendKey($key) FAILED on ${device.ipAddress}: ${result.exceptionOrNull()?.message}"
+                    "sendKey($key) FAILED on ${device.ipAddress}: ${dispatch.error?.message}"
                 )
                 scope.launch {
                     delay(800)

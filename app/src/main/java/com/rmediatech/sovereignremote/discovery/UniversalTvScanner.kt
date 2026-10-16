@@ -51,14 +51,10 @@ class UniversalTvScanner(
         candidateIps.addAll(arpMappings.keys)
 
         // Prioritize hosts in kernel ARP cache (instant 0ms response probability)
-        val sortedCandidates = mutableListOf<String>()
         val activeArpIps = arpMappings.keys.filter { ip ->
             currentSubnet == null || NetworkEnvironmentManager.matchesSubnet(ip, currentSubnet)
         }
-        sortedCandidates.addAll(activeArpIps)
-        for (ip in candidateIps) {
-            if (!sortedCandidates.contains(ip)) sortedCandidates.add(ip)
-        }
+        val sortedCandidates = (activeArpIps + candidateIps).distinct()
 
         val scanStartTime = System.currentTimeMillis()
         SovereignLogger.i(
@@ -66,34 +62,72 @@ class UniversalTvScanner(
             "Scan initiated: activeNetId=$currentNetId, subnet=$currentSubnet, candidates=${sortedCandidates.size}, timeout=${timeoutMs}ms"
         )
 
-        fun recordDevice(device: RemoteDevice) {
-            val existing = foundDevices[device.ipAddress]
-            val shouldUpdate = existing == null || 
-                (existing.deviceType == DeviceType.GENERIC && device.deviceType != DeviceType.GENERIC) ||
-                (existing.port != 5555 && device.port == 5555)
-            if (shouldUpdate) {
-                val safeId = if (device.id.isBlank() || device.id.endsWith("_")) "${device.deviceType.name.lowercase()}_${device.ipAddress}" else device.id
-                val enriched = device.copy(
-                    id = safeId,
-                    macAddress = if (device.macAddress.isNullOrBlank()) {
-                        arpMappings[device.ipAddress] ?: WakeOnLan.getMacFromArp(device.ipAddress)
-                    } else device.macAddress,
-                    subnetPrefix = device.subnetPrefix ?: currentSubnet,
-                    networkId = device.networkId ?: currentNetId
-                )
-                foundDevices[device.ipAddress] = enriched
-                SovereignLogger.i(
-                    SovereignLogger.Category.DISCOVERY,
-                    "Resolved device: [${enriched.deviceType}] ${enriched.name} at ${enriched.ipAddress}:${enriched.port} (mac=${enriched.macAddress})"
-                )
-                onDeviceFound?.invoke(enriched)
-            }
-        }
-
         // 2. Bound entire scan execution to strict timeout with coroutineScope
         // When timeoutMs fires, withTimeoutOrNull cancels coroutineScope and ALL child jobs immediately!
         withTimeoutOrNull(timeoutMs.toLong()) {
             coroutineScope {
+                fun recordDevice(device: RemoteDevice) {
+                    val mac = if (device.macAddress.isNullOrBlank()) {
+                        arpMappings[device.ipAddress] ?: WakeOnLan.getMacFromArp(device.ipAddress)
+                    } else device.macAddress
+
+                    val inferred = SmartTvClassifier.inferBrandFromMac(mac)
+                    val effectiveDevice = if (device.deviceType == DeviceType.GENERIC && inferred != null) {
+                        val isFire = inferred == DeviceType.FIRE_TV
+                        device.copy(
+                            deviceType = inferred,
+                            port = if (isFire) 5555 else device.port,
+                            name = if (isFire) "Fire TV Stick" else "${inferred.displayName} (${device.ipAddress})",
+                            modelName = inferred.displayName,
+                            macAddress = mac
+                        )
+                    } else device.copy(macAddress = mac)
+
+                    val existing = foundDevices[effectiveDevice.ipAddress]
+                    val shouldUpdate = existing == null || 
+                        (existing.deviceType == DeviceType.GENERIC && effectiveDevice.deviceType != DeviceType.GENERIC) ||
+                        (existing.port != 5555 && effectiveDevice.port == 5555)
+                    if (shouldUpdate) {
+                        val safeId = if (effectiveDevice.id.isBlank() || effectiveDevice.id.endsWith("_")) {
+                            "${effectiveDevice.deviceType.name.lowercase()}_${effectiveDevice.ipAddress}"
+                        } else effectiveDevice.id
+
+                        val enriched = effectiveDevice.copy(
+                            id = safeId,
+                            subnetPrefix = effectiveDevice.subnetPrefix ?: currentSubnet,
+                            networkId = effectiveDevice.networkId ?: currentNetId
+                        )
+                        foundDevices[enriched.ipAddress] = enriched
+                        SovereignLogger.i(
+                            SovereignLogger.Category.DISCOVERY,
+                            "Resolved device: [${enriched.deviceType}] ${enriched.name} at ${enriched.ipAddress}:${enriched.port} (mac=${enriched.macAddress})"
+                        )
+                        onDeviceFound?.invoke(enriched)
+
+                        // If device is still GENERIC, asynchronously bombard host across all protocols
+                        if (enriched.deviceType == DeviceType.GENERIC) {
+                            launch {
+                                val deep = SmartTvClassifier.deepInquireHost(enriched.ipAddress, enriched.macAddress, enriched.port, registry)
+                                if (deep.deviceType != DeviceType.GENERIC) {
+                                    recordDevice(deep.copy(subnetPrefix = currentSubnet, networkId = currentNetId))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fast-path ARP brand scout: if ARP cache reveals known TV vendor OUI, probe immediately
+                activeArpIps.forEach { ip ->
+                    val mac = arpMappings[ip]
+                    val brand = SmartTvClassifier.inferBrandFromMac(mac)
+                    if (brand != null) {
+                        launch {
+                            val deep = SmartTvClassifier.deepInquireHost(ip, mac, if (brand == DeviceType.FIRE_TV) 5555 else 8008, registry)
+                            recordDevice(deep)
+                        }
+                    }
+                }
+
                 // High-speed Multi-Target SSDP Multicast & Subnet Broadcast
                 launch {
                     discoverSsdp(
@@ -113,7 +147,7 @@ class UniversalTvScanner(
                             for (port in candidatePorts) {
                                 val current = foundDevices[ip]
                                 if (current != null && current.deviceType != DeviceType.GENERIC && current.port == 5555) break
-                                if (isPortReachable(ip, port, 120)) {
+                                if (isPortReachable(ip, port, 180)) {
                                     val dev = registry.probeHost(ip, port)
                                     if (dev != null) {
                                         recordDevice(dev)
@@ -135,23 +169,27 @@ class UniversalTvScanner(
 
         val latestArp = WakeOnLan.getAllArpMappings()
         foundDevices.values.map { dev ->
-            if (dev.macAddress.isNullOrBlank()) {
-                dev.copy(macAddress = latestArp[dev.ipAddress])
-            } else {
-                dev
-            }
+            if (dev.macAddress.isNullOrBlank()) dev.copy(macAddress = latestArp[dev.ipAddress]) else dev
         }.sortedBy { it.name }
     }
 
     suspend fun probeSpecificIp(ip: String): RemoteDevice? = withContext(Dispatchers.IO) {
         val activeNet = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         val mac = WakeOnLan.getMacFromArp(ip)
-        val candidatePorts = registry.getAllCandidatePorts()
-        val openPorts = candidatePorts.filter { isPortReachable(ip, it, 200) }
 
+        // 1. Sovereign Deep Inquisitor: Bombard host across all protocols (known + unknown)
+        val deepResolved = SmartTvClassifier.deepInquireHost(ip, mac, 8008, registry)
+        if (deepResolved.deviceType != DeviceType.GENERIC) {
+            return@withContext deepResolved.copy(
+                subnetPrefix = deepResolved.subnetPrefix ?: activeNet?.subnetPrefix,
+                networkId = deepResolved.networkId ?: activeNet?.networkId
+            )
+        }
+
+        // 2. Open port sweep & protocol confirmation
+        val openPorts = registry.getAllCandidatePorts().filter { isPortReachable(ip, it, 200) }
         if (openPorts.isNotEmpty()) {
-            val classified = SmartTvClassifier.probeAndConfirm(ip, openPorts, registry)
-            if (classified != null) {
+            SmartTvClassifier.probeAndConfirm(ip, openPorts, registry)?.let { classified ->
                 return@withContext classified.device.copy(
                     macAddress = classified.device.macAddress ?: mac,
                     subnetPrefix = classified.device.subnetPrefix ?: activeNet?.subnetPrefix,
@@ -160,29 +198,15 @@ class UniversalTvScanner(
             }
         }
 
-        // Generic fallback if host responds on any HTTP port
-        RemoteDevice(
-            id = "generic_$ip",
-            name = "Smart TV ($ip)",
-            ipAddress = ip,
-            port = 8008,
-            deviceType = DeviceType.GENERIC,
-            macAddress = mac,
+        deepResolved.copy(
             subnetPrefix = activeNet?.subnetPrefix,
             networkId = activeNet?.networkId
         )
     }
 
-    private fun isPortReachable(ip: String, port: Int, timeoutMs: Int): Boolean {
-        return try {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(ip, port), timeoutMs)
-                true
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
+    private fun isPortReachable(ip: String, port: Int, timeoutMs: Int): Boolean = try {
+        Socket().use { it.connect(InetSocketAddress(ip, port), timeoutMs); true }
+    } catch (_: Exception) { false }
 
     private suspend fun discoverSsdp(
         timeoutMs: Int,

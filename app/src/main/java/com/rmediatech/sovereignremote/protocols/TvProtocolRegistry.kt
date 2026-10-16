@@ -115,9 +115,76 @@ class TvProtocolRegistry(private val context: Context? = null) {
         return null
     }
 
+    data class KeyDispatchResult(
+        val isSuccess: Boolean,
+        val elapsedMs: Long,
+        val promotedDevice: RemoteDevice? = null,
+        val error: Throwable? = null
+    )
+
     suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> {
         val protocol = get(device.deviceType)
         return protocol.sendKey(device, key)
+    }
+
+    /**
+     * Sovereign Polymorphic Key Dispatcher:
+     * Attempts the assigned protocol first. If it fails or if the device is GENERIC,
+     * it initiates Agnostic Protocol Bombardment across all registered protocol engines
+     * and auto-promotes the device to the winning protocol upon successful acknowledgment!
+     */
+    suspend fun sendKeyWithAutoPromotion(device: RemoteDevice, key: RemoteKey): KeyDispatchResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val t0 = System.currentTimeMillis()
+        val primaryProtocol = get(device.deviceType)
+
+        // 1. Try primary protocol if not generic
+        if (device.deviceType != DeviceType.GENERIC) {
+            val directResult = primaryProtocol.sendKey(device, key)
+            if (directResult.isSuccess) {
+                val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1)
+                return@withContext KeyDispatchResult(true, elapsed, null)
+            }
+        }
+
+        // 2. Primary failed or device is GENERIC.
+        // Activate Agnostic Protocol Failover Bombardment!
+        com.rmediatech.sovereignremote.logging.SovereignLogger.w(
+            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
+            "Primary [${device.deviceType}] on ${device.ipAddress} did not ACK key $key. Activating Agnostic Protocol Failover Bombardment..."
+        )
+
+        val candidateProtocols = listOfNotNull(
+            getById("firetv"),
+            getById("googletv"),
+            getById("roku_ecp"),
+            getById("samsung_tizen"),
+            getById("lg_webos"),
+            getById("sony_bravia"),
+            getById("vizio_smartcast")
+        ).filter { it.protocolId != primaryProtocol.protocolId }
+
+        for (candidate in candidateProtocols) {
+            val trialPorts = (candidate.signature.candidatePorts + listOf(device.port, candidate.defaultPort)).distinct()
+            for (trialPort in trialPorts) {
+                val trialDevice = device.copy(deviceType = candidate.deviceType, port = trialPort)
+                val trialResult = candidate.sendKey(trialDevice, key)
+                if (trialResult.isSuccess) {
+                    val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1)
+                    val promoted = trialDevice.copy(
+                        name = if (device.deviceType == DeviceType.GENERIC) "${candidate.deviceType.displayName} (${device.ipAddress})" else device.name,
+                        modelName = candidate.deviceType.displayName
+                    )
+                    com.rmediatech.sovereignremote.logging.SovereignLogger.i(
+                        com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
+                        "🎉 BOMBARDMENT SUCCESS! Protocol [${candidate.deviceType}] on port $trialPort ACKed key $key on ${device.ipAddress}! Auto-promoting."
+                    )
+                    return@withContext KeyDispatchResult(true, elapsed, promoted)
+                }
+            }
+        }
+
+        val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1)
+        KeyDispatchResult(false, elapsed, null, Exception("All candidate protocols failed on ${device.ipAddress}"))
     }
 
     suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> {

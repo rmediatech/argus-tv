@@ -112,24 +112,26 @@ class GenericDialProtocol : SmartTvProtocol {
                             val name = rawName?.ifBlank { if (mfg.isNotBlank()) "$mfg TV" else "Smart TV" } ?: "Smart TV"
                             val model = modelMatch?.groupValues?.get(1)?.trim() ?: mfg
 
-                            val detectedType = when {
-                                mfg.contains("Samsung", ignoreCase = true) -> DeviceType.SAMSUNG_TIZEN
-                                mfg.contains("LG", ignoreCase = true) -> DeviceType.LG_WEBOS
-                                mfg.contains("Roku", ignoreCase = true) -> DeviceType.ROKU
-                                mfg.contains("Google", ignoreCase = true) || mfg.contains("Hisense", ignoreCase = true) ||
-                                    mfg.contains("TCL", ignoreCase = true) || mfg.contains("Sony", ignoreCase = true) -> DeviceType.GOOGLE_TV
-                                else -> DeviceType.GENERIC
-                            }
-
                             val mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
+                            val inferred = com.rmediatech.sovereignremote.discovery.SmartTvClassifier.inferBrandFromMac(mac)
+                            val detectedType = when {
+                                mfg.contains("Amazon", ignoreCase = true) || name.contains("Fire", ignoreCase = true) || model.contains("AFT", ignoreCase = true) || inferred == DeviceType.FIRE_TV -> DeviceType.FIRE_TV
+                                mfg.contains("Samsung", ignoreCase = true) || inferred == DeviceType.SAMSUNG_TIZEN -> DeviceType.SAMSUNG_TIZEN
+                                mfg.contains("LG", ignoreCase = true) || inferred == DeviceType.LG_WEBOS -> DeviceType.LG_WEBOS
+                                mfg.contains("Roku", ignoreCase = true) || inferred == DeviceType.ROKU -> DeviceType.ROKU
+                                mfg.contains("Google", ignoreCase = true) || mfg.contains("Hisense", ignoreCase = true) ||
+                                    mfg.contains("TCL", ignoreCase = true) || mfg.contains("Sony", ignoreCase = true) || inferred == DeviceType.GOOGLE_TV || inferred == DeviceType.SONY_BRAVIA -> DeviceType.GOOGLE_TV
+                                else -> inferred ?: DeviceType.GENERIC
+                            }
+                            val effectivePort = if (detectedType == DeviceType.FIRE_TV) 5555 else port
 
                             return@withContext RemoteDevice(
                                 id = "dial_${detectedType.name.lowercase()}_$host",
-                                name = name,
+                                name = if (detectedType == DeviceType.FIRE_TV && name.equals("Smart TV", ignoreCase = true)) "Fire TV Stick" else name,
                                 ipAddress = host,
-                                port = port,
+                                port = effectivePort,
                                 deviceType = detectedType,
-                                modelName = model,
+                                modelName = if (detectedType == DeviceType.FIRE_TV && (model.isBlank() || model.equals("Smart TV", ignoreCase = true))) "Amazon Fire TV" else model,
                                 isEthernet = false,
                                 macAddress = mac
                             )

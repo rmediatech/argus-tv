@@ -175,4 +175,30 @@ class SmartTvClassifierAdversarialTest {
             assertNotNull("Registry must provide a handler for $type", proto)
         }
     }
+
+    @Test
+    fun testInferBrandFromMacKnownVendors() {
+        // Rick's Fire TV Stick 4K Max MAC
+        assertEquals(DeviceType.FIRE_TV, SmartTvClassifier.inferBrandFromMac("68:F6:3B:B4:5C:14"))
+        assertEquals(DeviceType.FIRE_TV, SmartTvClassifier.inferBrandFromMac("68-F6-3B-B4-5C-14"))
+        assertEquals(DeviceType.FIRE_TV, SmartTvClassifier.inferBrandFromMac("68f63bb45c14"))
+
+        // Roku, Samsung, LG, Sony, Vizio
+        assertEquals(DeviceType.ROKU, SmartTvClassifier.inferBrandFromMac("b0:a7:37:aa:bb:cc"))
+        assertEquals(DeviceType.SAMSUNG_TIZEN, SmartTvClassifier.inferBrandFromMac("e4:7c:f9:11:22:33"))
+        assertEquals(DeviceType.LG_WEBOS, SmartTvClassifier.inferBrandFromMac("10:f9:20:44:55:66"))
+        assertEquals(DeviceType.SONY_BRAVIA, SmartTvClassifier.inferBrandFromMac("00:13:a9:77:88:99"))
+        assertEquals(DeviceType.VIZIO_SMARTCAST, SmartTvClassifier.inferBrandFromMac("00:19:fb:00:11:22"))
+    }
+
+    @Test
+    fun testInferBrandFromMacAdversarialAndCorruptedInputs() {
+        assertNull("Null MAC must return null safely", SmartTvClassifier.inferBrandFromMac(null))
+        assertNull("Empty MAC must return null safely", SmartTvClassifier.inferBrandFromMac(""))
+        assertNull("Whitespace MAC must return null safely", SmartTvClassifier.inferBrandFromMac("   "))
+        assertNull("Too short MAC must return null safely", SmartTvClassifier.inferBrandFromMac("68:F6"))
+        assertNull("Unknown MAC must return null", SmartTvClassifier.inferBrandFromMac("02:00:00:00:00:00"))
+        assertNull("SQL injection payload must return null without panic", SmartTvClassifier.inferBrandFromMac("' OR 1=1;--"))
+        assertNull("ANSI escape sequence must return null without panic", SmartTvClassifier.inferBrandFromMac("\u001B[31;1m68:F6:3B\u001B[0m"))
+    }
 }
