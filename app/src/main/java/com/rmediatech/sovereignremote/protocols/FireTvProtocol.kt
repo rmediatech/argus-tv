@@ -6,7 +6,6 @@ import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import dadb.AdbKeyPair
-import dadb.AdbShellStream
 import dadb.Dadb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -31,7 +30,6 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     )
 
     private val dadbCache = ConcurrentHashMap<String, Dadb>()
-    private val shellStreamCache = ConcurrentHashMap<String, AdbShellStream>()
 
     private val keyPair: AdbKeyPair by lazy {
         val keyDir = context?.filesDir?.let { File(it, "adb") } ?: File(System.getProperty("java.io.tmpdir", "/tmp"), "adb")
@@ -62,23 +60,6 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         }
     }
 
-    private fun getOrCreateShellStream(ip: String, port: Int, dadb: Dadb): AdbShellStream? {
-        val key = "$ip:$port"
-        val existing = shellStreamCache[key]
-        if (existing != null) {
-            return existing
-        }
-
-        return try {
-            val newStream = dadb.openShell()
-            shellStreamCache[key] = newStream
-            newStream
-        } catch (e: Exception) {
-            Log.w("FireTvProtocol", "Could not open persistent shell on $key: ${e.message}")
-            null
-        }
-    }
-
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
         val keycode = when (key) {
             RemoteKey.POWER -> 26
@@ -95,7 +76,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.PLAY_PAUSE -> 85
             RemoteKey.REWIND -> 89
             RemoteKey.FAST_FORWARD -> 90
-            RemoteKey.INFO -> 165
+            RemoteKey.INFO -> 82 // Android KEYCODE_MENU (Options on Fire TV)
         }
 
         try {
@@ -137,28 +118,13 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                 return@withContext Result.success(Unit)
             }
 
-            // High-throughput fast path via persistent shell stream
-            val stream = getOrCreateShellStream(device.ipAddress, device.port, dadb)
-            if (stream != null) {
-                try {
-                    stream.write("input keyevent $keycode\n")
-                    Log.d("FireTvProtocol", "Piped key $key ($keycode) to ${device.ipAddress}")
-                    return@withContext Result.success(Unit)
-                } catch (e: Exception) {
-                    Log.w("FireTvProtocol", "Piped shell write failed, resetting stream: ${e.message}")
-                    shellStreamCache.remove("${device.ipAddress}:${device.port}")
-                    try { stream.close() } catch (_: Exception) {}
-                }
-            }
-
-            // Fallback: standard shell execution
+            // Direct ADB exec: zero pipe stalling, zero buffer backlog, instantaneous key dispatch
             dadb.shell("input keyevent $keycode")
             Log.d("FireTvProtocol", "Successfully sent key $key ($keycode) to ${device.ipAddress}")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.w("FireTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
             dadbCache.remove("${device.ipAddress}:${device.port}")
-            shellStreamCache.remove("${device.ipAddress}:${device.port}")
 
             if (key == RemoteKey.POWER) {
                 val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
