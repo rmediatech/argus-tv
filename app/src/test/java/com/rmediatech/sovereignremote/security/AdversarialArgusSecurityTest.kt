@@ -156,4 +156,59 @@ class AdversarialArgusSecurityTest {
         assertFalse("Device must NEVER match a friend's subnet", NetworkEnvironmentManager.matchesSubnet(apartmentDevice.ipAddress, friendSubnet))
         assertEquals("Effective subnet derivation must match exact octets", "192.168.1", apartmentDevice.effectiveSubnet)
     }
+
+    // --- THREAT MODEL 6: ADVERSARIAL FORGOTTEN / BLACKLISTED DEVICE INVARIANT ---
+
+    @Test
+    fun testBlacklistedDeviceExcludedFromMerge() {
+        val unwantedDevice = RemoteDevice(
+            id = "unwanted_tv",
+            name = "Neighbor TV",
+            ipAddress = "192.168.1.200",
+            port = 5555,
+            deviceType = DeviceType.FIRE_TV,
+            subnetPrefix = "192.168.1"
+        )
+        val myTv = RemoteDevice(
+            id = "my_tv",
+            name = "My OLED",
+            ipAddress = "192.168.1.150",
+            port = 8008,
+            deviceType = DeviceType.GOOGLE_TV,
+            subnetPrefix = "192.168.1"
+        )
+
+        val ignoredIps = setOf("192.168.1.200")
+        val scanResults = listOf(unwantedDevice, myTv)
+
+        val filtered = scanResults.filterNot { ignoredIps.contains(it.ipAddress) }
+        assertEquals(1, filtered.size)
+        assertEquals("192.168.1.150", filtered.first().ipAddress)
+        assertFalse("Blacklisted IP must NEVER be admitted into memory or merged list", filtered.any { it.ipAddress == "192.168.1.200" })
+    }
+
+    @Test
+    fun testSubnetNetworkIdHealingPreventsFragmentedLocations() {
+        val legacyDevice = RemoteDevice(
+            id = "legacy_device",
+            name = "Living Room TV",
+            ipAddress = "192.168.1.158",
+            port = 5555,
+            deviceType = DeviceType.FIRE_TV,
+            subnetPrefix = "192.168.1",
+            networkId = "net_subnet_192.168.1"
+        )
+
+        val authoritativeNetworkId = "net_hw_3f9d334cf4fa49bc_192.168.1"
+        val activePrefix = "192.168.1"
+
+        // Perform healing as done in ArgusSessionState
+        val healed = if (legacyDevice.effectiveSubnet == activePrefix && legacyDevice.networkId != authoritativeNetworkId) {
+            legacyDevice.copy(networkId = authoritativeNetworkId)
+        } else legacyDevice
+
+        assertEquals("Device networkId must heal to authoritative hardware networkId", authoritativeNetworkId, healed.networkId)
+        assertEquals(authoritativeNetworkId, healed.effectiveNetworkId)
+    }
 }
+

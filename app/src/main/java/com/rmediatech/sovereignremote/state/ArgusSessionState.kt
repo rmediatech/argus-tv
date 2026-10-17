@@ -47,6 +47,9 @@ class ArgusSessionState(
     var hiddenIps by mutableStateOf(prefs.getStringSet("hidden_device_ips", emptySet()) ?: emptySet())
         private set
 
+    var ignoredIps by mutableStateOf(prefs.getStringSet("ignored_device_ips", emptySet()) ?: emptySet())
+        private set
+
     var activeSessionIps by mutableStateOf<Set<String>>(emptySet())
         private set
 
@@ -76,7 +79,8 @@ class ArgusSessionState(
     private fun cleanStaleDevices() {
         val cleaned = discoveredDevices.filterNot {
             (it.deviceType == DeviceType.GENERIC && (it.port == 8080 || it.port == 80 || it.port == 60000)) ||
-            (it.deviceType == DeviceType.SONY_BRAVIA && it.ipAddress.endsWith(".1") && it.port == 80)
+            (it.deviceType == DeviceType.SONY_BRAVIA && it.ipAddress.endsWith(".1") && it.port == 80) ||
+            ignoredIps.contains(it.ipAddress)
         }
         if (cleaned.size != discoveredDevices.size) {
             discoveredDevices = cleaned
@@ -94,7 +98,8 @@ class ArgusSessionState(
         val lastIp = netLastIp ?: prefs.getString("last_selected_ip", null)
 
         val eligible = discoveredDevices.filter {
-            !hiddenIps.contains(it.ipAddress) && (netId.isBlank() || it.effectiveNetworkId == netId)
+            !hiddenIps.contains(it.ipAddress) && !ignoredIps.contains(it.ipAddress) && 
+            (netId.isBlank() || it.effectiveNetworkId == netId || (subnetPrefix.isNotBlank() && it.effectiveSubnet == subnetPrefix))
         }
         currentDevice = eligible.find { it.ipAddress == lastIp } ?: eligible.firstOrNull()
     }
@@ -124,8 +129,13 @@ class ArgusSessionState(
         prefs.edit().putStringSet("hidden_device_ips", updated).apply()
         if (currentDevice?.ipAddress == ip) {
             val netId = currentNetworkId
+            val subnetPrefix = currentSubnetPrefix
             currentDevice = discoveredDevices.find {
-                !updated.contains(it.ipAddress) && (netId.isBlank() || it.effectiveNetworkId == netId)
+                !updated.contains(it.ipAddress) && !ignoredIps.contains(it.ipAddress) && 
+                (netId.isBlank() || it.effectiveNetworkId == netId || (subnetPrefix.isNotBlank() && it.effectiveSubnet == subnetPrefix))
+            }
+            currentDevice?.let { next ->
+                prefs.edit().putString("last_selected_ip", next.ipAddress).apply()
             }
         }
     }
@@ -135,6 +145,11 @@ class ArgusSessionState(
         discoveredDevices = updated
         prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
 
+        // Permanently blacklist so background scan won't resurrect this unwanted device
+        val updatedIgnored = ignoredIps + device.ipAddress
+        ignoredIps = updatedIgnored
+        prefs.edit().putStringSet("ignored_device_ips", updatedIgnored).apply()
+
         if (hiddenIps.contains(device.ipAddress)) {
             val updatedHidden = hiddenIps - device.ipAddress
             hiddenIps = updatedHidden
@@ -143,8 +158,10 @@ class ArgusSessionState(
 
         if (currentDevice?.ipAddress == device.ipAddress) {
             val netId = currentNetworkId
+            val subnet = currentSubnetPrefix
             val nextDevice = updated.find {
-                !hiddenIps.contains(it.ipAddress) && (netId.isBlank() || it.effectiveNetworkId == netId)
+                !hiddenIps.contains(it.ipAddress) && !updatedIgnored.contains(it.ipAddress) && 
+                (netId.isBlank() || it.effectiveNetworkId == netId || (subnet.isNotBlank() && it.effectiveSubnet == subnet))
             }
             currentDevice = nextDevice
             if (nextDevice != null) {
@@ -153,7 +170,7 @@ class ArgusSessionState(
                 prefs.edit().remove("last_selected_ip").apply()
             }
         }
-        Toast.makeText(context, "Removed ${device.name}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Removed & forgotten ${device.name}", Toast.LENGTH_SHORT).show()
     }
 
     fun clearOtherNetworks() {
@@ -168,7 +185,14 @@ class ArgusSessionState(
     fun clearAllDevices() {
         discoveredDevices = emptyList()
         currentDevice = null
-        prefs.edit().remove("saved_devices_json").remove("last_selected_ip").apply()
+        ignoredIps = emptySet()
+        hiddenIps = emptySet()
+        prefs.edit()
+            .remove("saved_devices_json")
+            .remove("last_selected_ip")
+            .remove("ignored_device_ips")
+            .remove("hidden_device_ips")
+            .apply()
         Toast.makeText(context, "All devices cleared", Toast.LENGTH_SHORT).show()
     }
 
@@ -231,9 +255,22 @@ class ArgusSessionState(
 
                 activeSessionIps = emptySet()
                 val currentEffectiveNetId = activeSubnetInfo?.networkId ?: activeNetId
+                if (activePrefix.isNotBlank() && currentEffectiveNetId.isNotBlank()) {
+                    val healed = discoveredDevices.map { dev ->
+                        if (dev.effectiveSubnet == activePrefix && dev.networkId != currentEffectiveNetId) {
+                            dev.copy(networkId = currentEffectiveNetId)
+                        } else dev
+                    }
+                    if (healed != discoveredDevices) {
+                        discoveredDevices = healed
+                        prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(healed)).apply()
+                    }
+                }
+
                 val results = scanner.discoverAll(
                     timeoutMs = 3500,
                     onDeviceFound = { liveDev ->
+                        if (ignoredIps.contains(liveDev.ipAddress)) return@discoverAll
                         activeSessionIps = activeSessionIps + liveDev.ipAddress
                         val targetNetId = activeSubnetInfo?.networkId ?: currentEffectiveNetId
                         val sanitized = liveDev.copy(
@@ -244,7 +281,8 @@ class ArgusSessionState(
                         val updated = DeviceSerializer.merge(discoveredDevices, listOf(sanitized))
                         discoveredDevices = updated
                         prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
-                        if (currentDevice == null && (targetNetId.isBlank() || sanitized.effectiveNetworkId == targetNetId)) {
+                        if (currentDevice == null && !hiddenIps.contains(sanitized.ipAddress) && 
+                            (targetNetId.isBlank() || sanitized.effectiveNetworkId == targetNetId || (activePrefix.isNotBlank() && sanitized.effectiveSubnet == activePrefix))) {
                             currentDevice = sanitized
                             prefs.edit()
                                 .putString("last_selected_ip", sanitized.ipAddress)
@@ -254,7 +292,7 @@ class ArgusSessionState(
                     }
                 )
                 val activeHwNetId = activeSubnetInfo?.networkId ?: currentEffectiveNetId
-                val sanitizedResults = results.map { dev ->
+                val sanitizedResults = results.filterNot { ignoredIps.contains(it.ipAddress) }.map { dev ->
                     dev.copy(
                         name = SovereignSanitizer.sanitizeDeviceName(dev.name),
                         modelName = SovereignSanitizer.sanitizeModelName(dev.modelName),
@@ -267,7 +305,8 @@ class ArgusSessionState(
                 prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
 
                 val eligible = merged.filter {
-                    !hiddenIps.contains(it.ipAddress) && (activeHwNetId.isBlank() || it.effectiveNetworkId == activeHwNetId || (activePrefix.isNotBlank() && it.effectiveSubnet == activePrefix))
+                    !hiddenIps.contains(it.ipAddress) && !ignoredIps.contains(it.ipAddress) && 
+                    (activeHwNetId.isBlank() || it.effectiveNetworkId == activeHwNetId || (activePrefix.isNotBlank() && it.effectiveSubnet == activePrefix))
                 }
                 // Under-the-waterline invariant: Prioritize devices physically confirmed online in this scan session
                 val onlineConfirmed = eligible.filter { activeSessionIps.contains(it.ipAddress) }

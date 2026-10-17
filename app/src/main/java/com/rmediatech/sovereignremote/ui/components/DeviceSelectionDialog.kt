@@ -9,12 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,8 +24,8 @@ import com.rmediatech.sovereignremote.ui.theme.LocalThemePalette
 
 /**
  * Sovereign Device Selection Dialog:
- * One Job: Presents available TVs on the active Wi-Fi in an intuitive, consumer-grade card list.
- * Isolates other-location TVs quietly below the waterline with zero technical clutter.
+ * One Job: Presents available TVs scoped by network, with individual Hide & Trashcan controls.
+ * Clear distinction between active Wi-Fi, hidden devices, and other network locations.
  */
 @Composable
 fun DeviceSelectionDialog(
@@ -52,6 +47,7 @@ fun DeviceSelectionDialog(
 ) {
     val palette = LocalThemePalette.current
     var showOtherLocations by remember { mutableStateOf(false) }
+    var showHiddenDevices by remember { mutableStateOf(false) }
 
     val activeDevices = discoveredDevices.filter { dev ->
         if (!activeNetworkId.isNullOrBlank() && dev.effectiveNetworkId == activeNetworkId) true
@@ -60,6 +56,7 @@ fun DeviceSelectionDialog(
     }
     val otherDevices = discoveredDevices.filter { dev -> !activeDevices.any { it.ipAddress == dev.ipAddress } }
     val visibleActive = activeDevices.filter { !hiddenIps.contains(it.ipAddress) }
+    val hiddenActive = activeDevices.filter { hiddenIps.contains(it.ipAddress) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -70,7 +67,11 @@ fun DeviceSelectionDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Select TV", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                Column {
+                    Text("Select TV", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                    val netLabel = if (!activeSubnetPrefix.isNullOrBlank()) "Wi-Fi: ${activeSubnetPrefix}.x" else "Local Network"
+                    Text(netLabel, style = MaterialTheme.typography.labelSmall, color = palette.primaryAccent, fontSize = 10.sp)
+                }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
                 }
@@ -94,9 +95,9 @@ fun DeviceSelectionDialog(
                 }
 
                 if (visibleActive.isEmpty()) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (isScanning) "Searching your Wi-Fi for TVs..." else "No TVs detected on this Wi-Fi yet.",
+                            text = if (isScanning) "Searching your Wi-Fi for TVs..." else "No visible TVs detected on this Wi-Fi.",
                             style = MaterialTheme.typography.bodySmall, color = palette.textSecondary, modifier = Modifier.padding(bottom = 8.dp)
                         )
                         if (!isScanning) {
@@ -113,12 +114,47 @@ fun DeviceSelectionDialog(
                             device = device,
                             isSelected = device.id == currentDevice?.id,
                             isOnline = activeSessionIps.contains(device.ipAddress),
+                            isHidden = false,
                             onSelect = { onSelectDevice(device); onDismiss() },
+                            onToggleHide = { onToggleHideDevice(device.ipAddress) },
                             onDelete = { onDeleteDevice(device) }
                         )
                     }
                 }
 
+                // Hidden devices on active Wi-Fi section
+                if (hiddenActive.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(palette.surfaceElevated.copy(alpha = 0.6f))
+                            .clickable { showHiddenDevices = !showHiddenDevices }.padding(horizontal = 10.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.VisibilityOff, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Hidden TVs on this Wi-Fi (${hiddenActive.size})", style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
+                        }
+                        Icon(if (showHiddenDevices) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, null, tint = palette.textSecondary, modifier = Modifier.size(16.dp))
+                    }
+
+                    if (showHiddenDevices) {
+                        hiddenActive.forEach { device ->
+                            DeviceCard(
+                                device = device,
+                                isSelected = false,
+                                isOnline = activeSessionIps.contains(device.ipAddress),
+                                isHidden = true,
+                                onSelect = { onSelectDevice(device); onDismiss() },
+                                onToggleHide = { onToggleHideDevice(device.ipAddress) },
+                                onDelete = { onDeleteDevice(device) }
+                            )
+                        }
+                    }
+                }
+
+                // Devices saved from other networks section
                 if (otherDevices.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(
@@ -127,7 +163,11 @@ fun DeviceSelectionDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("TVs from other locations (${otherDevices.size})", style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Wifi, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("TVs from other networks (${otherDevices.size})", style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = onClearOtherNetworks, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
                                 Text("Clear", fontSize = 10.sp, color = Color(0xFFFF5252))
@@ -138,19 +178,16 @@ fun DeviceSelectionDialog(
 
                     if (showOtherLocations) {
                         otherDevices.forEach { device ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f).clickable { onSelectDevice(device); onDismiss() }) {
-                                    Text(device.name, style = MaterialTheme.typography.bodySmall, color = palette.textPrimary)
-                                    Text("${device.deviceType.displayName} • Saved Location", style = MaterialTheme.typography.labelSmall, color = palette.textSecondary, fontSize = 10.sp)
-                                }
-                                IconButton(onClick = { onDeleteDevice(device) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Rounded.Close, "Remove", tint = palette.textSecondary.copy(alpha = 0.4f), modifier = Modifier.size(14.dp))
-                                }
-                            }
+                            DeviceCard(
+                                device = device,
+                                isSelected = false,
+                                isOnline = false,
+                                isHidden = hiddenIps.contains(device.ipAddress),
+                                networkSubtitle = "${device.deviceType.displayName} • Network ${device.effectiveSubnet}.x (${device.ipAddress})",
+                                onSelect = { onSelectDevice(device); onDismiss() },
+                                onToggleHide = { onToggleHideDevice(device.ipAddress) },
+                                onDelete = { onDeleteDevice(device) }
+                            )
                         }
                     }
                 }
@@ -181,7 +218,10 @@ private fun DeviceCard(
     device: RemoteDevice,
     isSelected: Boolean,
     isOnline: Boolean,
+    isHidden: Boolean = false,
+    networkSubtitle: String? = null,
     onSelect: () -> Unit,
+    onToggleHide: (() -> Unit)? = null,
     onDelete: () -> Unit
 ) {
     val palette = LocalThemePalette.current
@@ -199,30 +239,55 @@ private fun DeviceCard(
                 shape = RoundedCornerShape(10.dp)
             )
             .clickable { onSelect() }
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(badgeColor.copy(alpha = 0.15f)),
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(badgeColor.copy(alpha = if (isHidden) 0.08f else 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.Tv, contentDescription = null, tint = badgeColor, modifier = Modifier.size(20.dp))
+                Icon(
+                    Icons.Rounded.Tv,
+                    contentDescription = null,
+                    tint = if (isHidden) badgeColor.copy(alpha = 0.45f) else badgeColor,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Spacer(modifier = Modifier.width(10.dp))
             Column {
-                Text(
-                    text = device.name,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                    color = palette.textPrimary,
-                    fontSize = 13.sp
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (isOnline) Color(0xFF00E676) else Color(0xFF9E9E9E)))
-                    Spacer(modifier = Modifier.width(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = if (isOnline) "Online • ${device.deviceType.displayName}" else "Standby • ${device.deviceType.displayName}",
+                        text = device.name,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (isHidden) palette.textSecondary else palette.textPrimary,
+                        fontSize = 13.sp
+                    )
+                    if (isSelected) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            Icons.Rounded.Check,
+                            contentDescription = "Active TV",
+                            tint = palette.primaryAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isOnline) Color(0xFF00E676) else Color(0xFF9E9E9E))
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    val sub = networkSubtitle ?: "${if (isOnline) "Online" else "Standby"} • ${device.deviceType.displayName} • ${device.ipAddress}"
+                    Text(
+                        text = sub,
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isOnline) palette.textPrimary.copy(alpha = 0.85f) else palette.textSecondary,
                         fontSize = 10.sp
@@ -231,11 +296,24 @@ private fun DeviceCard(
             }
         }
 
-        if (isSelected) {
-            Icon(Icons.Rounded.Check, contentDescription = "Active TV", tint = palette.primaryAccent, modifier = Modifier.size(18.dp))
-        } else {
-            IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                Icon(Icons.Rounded.Close, contentDescription = "Remove", tint = palette.textSecondary.copy(alpha = 0.4f), modifier = Modifier.size(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onToggleHide != null) {
+                IconButton(onClick = onToggleHide, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = if (isHidden) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
+                        contentDescription = if (isHidden) "Unhide TV" else "Hide TV",
+                        tint = if (isHidden) palette.primaryAccent else palette.textSecondary.copy(alpha = 0.65f),
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+                Icon(
+                    imageVector = Icons.Rounded.DeleteOutline,
+                    contentDescription = "Forget TV",
+                    tint = Color(0xFFFF5252).copy(alpha = 0.85f),
+                    modifier = Modifier.size(17.dp)
+                )
             }
         }
     }
