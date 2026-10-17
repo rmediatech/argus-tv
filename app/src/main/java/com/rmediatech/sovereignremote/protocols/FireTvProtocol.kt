@@ -135,7 +135,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.PLAY_PAUSE -> 85
             RemoteKey.REWIND -> 89
             RemoteKey.FAST_FORWARD -> 90
-            RemoteKey.INFO -> 82 // Android KEYCODE_MENU (Options on Fire TV)
+            RemoteKey.INFO -> 176 // Android KEYCODE_SETTINGS (Quick Settings / Options on Fire TV)
         }
 
         val scancode = when (key) {

@@ -220,7 +220,7 @@ class LgWebOsProtocol(private val client: OkHttpClient? = null) : SmartTvProtoco
         RemoteKey.FAST_FORWARD -> "ssap://media.controls/fastForward"
         RemoteKey.SELECT, RemoteKey.UP, RemoteKey.DOWN, RemoteKey.LEFT, RemoteKey.RIGHT -> "ssap://com.webos.service.ime/sendEnterKey"
         RemoteKey.BACK -> "ssap://tv/switchInput"
-        RemoteKey.INFO -> "ssap://tv/getChannelInfo"
+        RemoteKey.INFO -> "ssap://system/openSettings"
     }
 
     private fun isTcpPortOpen(host: String, port: Int, timeoutMs: Int): Boolean {
