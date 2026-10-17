@@ -36,6 +36,7 @@ fun RemoteScreen(
     activeSubnetPrefix: String? = null,
     activeNetworkId: String? = null,
     activeSessionIps: Set<String> = emptySet(),
+    unconfiguredIps: Set<String> = emptySet(),
     isScanning: Boolean,
     livenessState: DeviceLivenessState = DeviceLivenessState.DISCONNECTED,
     lastAckLatencyMs: Long? = null,
@@ -55,6 +56,7 @@ fun RemoteScreen(
     var showDeviceDialog by remember { mutableStateOf(false) }
     var showManualIpDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var setupGuideDevice by remember { mutableStateOf<RemoteDevice?>(null) }
     val view = LocalView.current
 
     val infiniteTransition = rememberInfiniteTransition(label = "LivenessPulse")
@@ -411,6 +413,7 @@ fun RemoteScreen(
                 activeSubnetPrefix = activeSubnetPrefix,
                 activeNetworkId = activeNetworkId,
                 activeSessionIps = activeSessionIps,
+                unconfiguredIps = unconfiguredIps,
                 isScanning = isScanning,
                 onSelectDevice = onSelectDevice,
                 onToggleHideDevice = onToggleHideDevice,
@@ -422,7 +425,22 @@ fun RemoteScreen(
                     showDeviceDialog = false
                     showManualIpDialog = true
                 },
+                onShowSetupGuide = { dev ->
+                    setupGuideDevice = dev
+                },
                 onDismiss = { showDeviceDialog = false }
+            )
+        }
+
+        // --- TV SETUP GUIDE MODAL DIALOG ---
+        if (setupGuideDevice != null) {
+            TvSetupGuideDialog(
+                device = setupGuideDevice!!,
+                onDismiss = { setupGuideDevice = null },
+                onDeviceReady = { readyDev ->
+                    setupGuideDevice = null
+                    onSelectDevice(readyDev)
+                }
             )
         }
 

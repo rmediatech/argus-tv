@@ -53,6 +53,9 @@ class ArgusSessionState(
     var activeSessionIps by mutableStateOf<Set<String>>(emptySet())
         private set
 
+    var unconfiguredIps by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     var currentDevice by mutableStateOf<RemoteDevice?>(null)
         private set
 
@@ -74,6 +77,7 @@ class ArgusSessionState(
         cleanStaleDevices()
         restoreInitialDevice()
         startLivenessMonitoring()
+        refreshUnconfiguredDevices()
     }
 
     private fun cleanStaleDevices() {
@@ -99,7 +103,7 @@ class ArgusSessionState(
 
         val eligible = discoveredDevices.filter {
             !hiddenIps.contains(it.ipAddress) && !ignoredIps.contains(it.ipAddress) && 
-            (netId.isBlank() || it.effectiveNetworkId == netId || (subnetPrefix.isNotBlank() && it.effectiveSubnet == subnetPrefix))
+            SubnetInfo.isDeviceOnNetwork(it, netId, subnetPrefix)
         }
         currentDevice = eligible.find { it.ipAddress == lastIp } ?: eligible.firstOrNull()
     }
@@ -197,6 +201,7 @@ class ArgusSessionState(
     }
 
     fun onResumeNetworkCheck() {
+        NetworkEnvironmentManager.clearGatewayHardwareCache()
         val fresh = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         if (fresh?.networkId != activeSubnetInfo?.networkId) {
             runDiscovery()
@@ -224,15 +229,15 @@ class ArgusSessionState(
         // Immediately restore saved device on this network if known, or detach foreign network device
         if (activeNetId.isNotBlank()) {
             val netEligible = discoveredDevices.filter {
-                !hiddenIps.contains(it.ipAddress) && (it.effectiveNetworkId == activeNetId || (activePrefix.isNotBlank() && it.effectiveSubnet == activePrefix))
+                !hiddenIps.contains(it.ipAddress) && SubnetInfo.isDeviceOnNetwork(it, activeNetId, activePrefix)
             }
             val restored = netEligible.find { it.ipAddress == netLastIp } ?: netEligible.firstOrNull()
             if (restored != null) {
                 currentDevice = restored
-            } else if (currentDevice != null && currentDevice?.effectiveNetworkId != activeNetId && (activePrefix.isBlank() || currentDevice?.effectiveSubnet != activePrefix)) {
+            } else if (currentDevice != null && !SubnetInfo.isDeviceOnNetwork(currentDevice!!, activeNetId, activePrefix)) {
                 currentDevice = null
             }
-        } else if (currentDevice != null && activeNetId.isNotBlank() && currentDevice?.effectiveNetworkId != activeNetId) {
+        } else if (currentDevice != null && activeNetId.isNotBlank() && !SubnetInfo.isDeviceOnNetwork(currentDevice!!, activeNetId, activePrefix)) {
             currentDevice = null
         }
 
@@ -242,7 +247,7 @@ class ArgusSessionState(
                 val gwIp = freshNetInfo?.gatewayIp
                 if (!gwIp.isNullOrBlank() && freshNetInfo?.gatewayHardwareId == null) {
                     val probedHw = withContext(Dispatchers.IO) {
-                        NetworkEnvironmentManager.probeGatewayHardwareId(gwIp)
+                        NetworkEnvironmentManager.probeGatewayHardwareId(gwIp, forceFresh = true)
                     }
                     if (probedHw != null) {
                         NetworkEnvironmentManager.recordGatewayHardwareId(context, gwIp, probedHw)
@@ -255,9 +260,10 @@ class ArgusSessionState(
 
                 activeSessionIps = emptySet()
                 val currentEffectiveNetId = activeSubnetInfo?.networkId ?: activeNetId
-                if (activePrefix.isNotBlank() && currentEffectiveNetId.isNotBlank()) {
+                if (activePrefix.isNotBlank() && currentEffectiveNetId.startsWith("net_hw_")) {
+                    // Only heal legacy un-fingerprinted devices (net_subnet_). Never cross-contaminate existing hardware-anchored devices!
                     val healed = discoveredDevices.map { dev ->
-                        if (dev.effectiveSubnet == activePrefix && dev.networkId != currentEffectiveNetId) {
+                        if (dev.networkId?.startsWith("net_subnet_") == true && dev.effectiveSubnet == activePrefix) {
                             dev.copy(networkId = currentEffectiveNetId)
                         } else dev
                     }
@@ -306,7 +312,7 @@ class ArgusSessionState(
 
                 val eligible = merged.filter {
                     !hiddenIps.contains(it.ipAddress) && !ignoredIps.contains(it.ipAddress) && 
-                    (activeHwNetId.isBlank() || it.effectiveNetworkId == activeHwNetId || (activePrefix.isNotBlank() && it.effectiveSubnet == activePrefix))
+                    SubnetInfo.isDeviceOnNetwork(it, activeHwNetId, activePrefix)
                 }
                 // Under-the-waterline invariant: Prioritize devices physically confirmed online in this scan session
                 val onlineConfirmed = eligible.filter { activeSessionIps.contains(it.ipAddress) }
@@ -318,7 +324,7 @@ class ArgusSessionState(
 
                 if (preferred != null && (
                     currentDevice == null || 
-                    (activeHwNetId.isNotBlank() && currentDevice?.effectiveNetworkId != activeHwNetId && (activePrefix.isBlank() || currentDevice?.effectiveSubnet != activePrefix)) ||
+                    (activeHwNetId.isNotBlank() && !SubnetInfo.isDeviceOnNetwork(currentDevice!!, activeHwNetId, activePrefix)) ||
                     (activeSessionIps.isNotEmpty() && currentDevice != null && !activeSessionIps.contains(currentDevice?.ipAddress))
                 )) {
                     currentDevice = preferred
@@ -327,6 +333,28 @@ class ArgusSessionState(
                 android.util.Log.e("ArgusSessionState", "Discovery error: ${e.message}", e)
             } finally {
                 isScanning = false
+                refreshUnconfiguredDevices()
+            }
+        }
+    }
+
+    fun refreshUnconfiguredDevices() {
+        scope.launch(Dispatchers.IO) {
+            val unconfigured = mutableSetOf<String>()
+            for (dev in discoveredDevices) {
+                if (dev.deviceType == DeviceType.FIRE_TV) {
+                    if (!DeviceLivenessTracker.isPortOpen(dev.ipAddress, 5555, 150)) {
+                        unconfigured.add(dev.ipAddress)
+                    }
+                } else if (dev.deviceType == DeviceType.VIZIO_SMARTCAST) {
+                    val token = prefs.getString("vizio_auth_${dev.ipAddress}", null)
+                    if (token.isNullOrBlank()) {
+                        unconfigured.add(dev.ipAddress)
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                unconfiguredIps = unconfigured
             }
         }
     }

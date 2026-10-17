@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
                     activeSubnetPrefix = sessionState.currentSubnetPrefix.takeIf { it.isNotBlank() },
                     activeNetworkId = sessionState.currentNetworkId.takeIf { it.isNotBlank() },
                     activeSessionIps = sessionState.activeSessionIps,
+                    unconfiguredIps = sessionState.unconfiguredIps,
                     isScanning = sessionState.isScanning,
                     livenessState = sessionState.livenessState,
                     lastAckLatencyMs = sessionState.lastAckLatencyMs,

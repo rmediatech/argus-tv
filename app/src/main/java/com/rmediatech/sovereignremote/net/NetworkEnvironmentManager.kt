@@ -1,6 +1,7 @@
 package com.rmediatech.sovereignremote.net
 
 import android.content.Context
+import com.rmediatech.sovereignremote.model.RemoteDevice
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
@@ -36,6 +37,20 @@ data class SubnetInfo(
     val gatewayHardwareId: String? = null,
     val networkId: String = computeNetworkId(gatewayMac, subnetPrefix, gatewayHardwareId)
 ) {
+    fun isDeviceOnThisNetwork(device: RemoteDevice): Boolean {
+        // 1. If both active network and device have hardware router fingerprint, strict match required!
+        if (networkId.startsWith("net_hw_") && device.effectiveNetworkId.startsWith("net_hw_")) {
+            return device.effectiveNetworkId == networkId
+        }
+        // 2. Exact match
+        if (device.effectiveNetworkId == networkId) return true
+        // 3. Fallback only if device is an un-fingerprinted legacy subnet record
+        if (device.networkId?.startsWith("net_subnet_") == true && device.effectiveSubnet == subnetPrefix) {
+            return true
+        }
+        return false
+    }
+
     companion object {
         fun computeNetworkId(gatewayMac: String?, subnetPrefix: String, gatewayHardwareId: String? = null): String {
             val cleanMac = gatewayMac?.replace("[:-]".toRegex(), "")?.lowercase()?.trim()
@@ -47,6 +62,20 @@ data class SubnetInfo(
                 return "net_hw_${cleanHw}_${subnetPrefix}"
             }
             return "net_subnet_${subnetPrefix}"
+        }
+
+        fun isDeviceOnNetwork(device: RemoteDevice, activeNetworkId: String?, activeSubnetPrefix: String?): Boolean {
+            if (activeNetworkId.isNullOrBlank()) {
+                return !activeSubnetPrefix.isNullOrBlank() && device.effectiveSubnet == activeSubnetPrefix
+            }
+            if (activeNetworkId.startsWith("net_hw_") && device.effectiveNetworkId.startsWith("net_hw_")) {
+                return device.effectiveNetworkId == activeNetworkId
+            }
+            if (device.effectiveNetworkId == activeNetworkId) return true
+            if (device.networkId?.startsWith("net_subnet_") == true && !activeSubnetPrefix.isNullOrBlank() && device.effectiveSubnet == activeSubnetPrefix) {
+                return true
+            }
+            return false
         }
     }
 }
@@ -87,9 +116,15 @@ object NetworkEnvironmentManager {
         }
     }
 
-    fun probeGatewayHardwareId(gatewayIp: String): String? {
+    fun clearGatewayHardwareCache() {
+        cachedGatewayHwMap.clear()
+    }
+
+    fun probeGatewayHardwareId(gatewayIp: String, forceFresh: Boolean = false): String? {
         if (gatewayIp.isBlank()) return null
-        cachedGatewayHwMap[gatewayIp]?.let { return it }
+        if (!forceFresh) {
+            cachedGatewayHwMap[gatewayIp]?.let { return it }
+        }
 
         // 1. Fast TLS Cert Fingerprint on Port 443 (150ms timeout)
         try {

@@ -202,13 +202,71 @@ class AdversarialArgusSecurityTest {
         val authoritativeNetworkId = "net_hw_3f9d334cf4fa49bc_192.168.1"
         val activePrefix = "192.168.1"
 
-        // Perform healing as done in ArgusSessionState
-        val healed = if (legacyDevice.effectiveSubnet == activePrefix && legacyDevice.networkId != authoritativeNetworkId) {
+        // Perform healing as done in ArgusSessionState: only legacy net_subnet_ devices are healed
+        val healed = if (legacyDevice.networkId?.startsWith("net_subnet_") == true && legacyDevice.effectiveSubnet == activePrefix) {
             legacyDevice.copy(networkId = authoritativeNetworkId)
         } else legacyDevice
 
         assertEquals("Device networkId must heal to authoritative hardware networkId", authoritativeNetworkId, healed.networkId)
         assertEquals(authoritativeNetworkId, healed.effectiveNetworkId)
+    }
+
+    @Test
+    fun testSubnetCollisionHardwareSeparationInvariants() {
+        val homeTv = RemoteDevice(
+            id = "firetv_home",
+            name = "Fire TV Stick 4K Max",
+            ipAddress = "192.168.1.158",
+            port = 5555,
+            deviceType = DeviceType.FIRE_TV,
+            subnetPrefix = "192.168.1",
+            networkId = "net_hw_3f9d334cf4fa49bc_192.168.1"
+        )
+
+        val duanesTv = RemoteDevice(
+            id = "firetv_duane",
+            name = "Duane's Fire TV",
+            ipAddress = "192.168.1.211",
+            port = 5555,
+            deviceType = DeviceType.FIRE_TV,
+            subnetPrefix = "192.168.1",
+            networkId = "net_hw_3349a1a147f2f74a_192.168.1"
+        )
+
+        val homeNetId = "net_hw_3f9d334cf4fa49bc_192.168.1"
+        val duaneNetId = "net_hw_3349a1a147f2f74a_192.168.1"
+        val subnetPrefix = "192.168.1"
+
+        // 1. When at Home: Home TV must be active, Duane's TV MUST NOT match as active
+        assertTrue("Home TV must match Home active network", com.rmediatech.sovereignremote.net.SubnetInfo.isDeviceOnNetwork(homeTv, homeNetId, subnetPrefix))
+        assertFalse("Duane's TV must NOT bleed into Home network despite matching 192.168.1 subnet", com.rmediatech.sovereignremote.net.SubnetInfo.isDeviceOnNetwork(duanesTv, homeNetId, subnetPrefix))
+
+        // 2. When at Duane's: Duane's TV must be active, Home TV MUST NOT match as active
+        assertTrue("Duane's TV must match Duane active network", com.rmediatech.sovereignremote.net.SubnetInfo.isDeviceOnNetwork(duanesTv, duaneNetId, subnetPrefix))
+        assertFalse("Home TV must NOT bleed into Duane's network despite matching 192.168.1 subnet", com.rmediatech.sovereignremote.net.SubnetInfo.isDeviceOnNetwork(homeTv, duaneNetId, subnetPrefix))
+    }
+
+    @Test
+    fun testHardwareAnchoredDeviceNeverOverwrittenDuringHealing() {
+        val homeTv = RemoteDevice(
+            id = "firetv_home",
+            name = "Fire TV Stick 4K Max",
+            ipAddress = "192.168.1.158",
+            port = 5555,
+            deviceType = DeviceType.FIRE_TV,
+            subnetPrefix = "192.168.1",
+            networkId = "net_hw_3f9d334cf4fa49bc_192.168.1"
+        )
+
+        val duaneNetId = "net_hw_3349a1a147f2f74a_192.168.1"
+        val activePrefix = "192.168.1"
+
+        // An already hardware-anchored device must NEVER be reassigned to another router
+        val healed = if (homeTv.networkId?.startsWith("net_subnet_") == true && homeTv.effectiveSubnet == activePrefix) {
+            homeTv.copy(networkId = duaneNetId)
+        } else homeTv
+
+        assertEquals("Hardware-anchored device must retain original router identity", "net_hw_3f9d334cf4fa49bc_192.168.1", healed.networkId)
     }
 }
 

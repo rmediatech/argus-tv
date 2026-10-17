@@ -19,7 +19,7 @@ class TvProtocolRegistry(private val context: Context? = null) {
         register(SamsungProtocol())
         register(LgWebOsProtocol())
         register(SonyBraviaProtocol())
-        register(VizioSmartCastProtocol())
+        register(VizioSmartCastProtocol(context))
         register(GoogleTvProtocol(context))
         register(FireTvProtocol(context))
         register(GenericDialProtocol())

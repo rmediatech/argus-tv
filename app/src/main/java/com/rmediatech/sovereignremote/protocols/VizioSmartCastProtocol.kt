@@ -1,5 +1,6 @@
 package com.rmediatech.sovereignremote.protocols
 
+import android.content.Context
 import com.rmediatech.sovereignremote.logging.SovereignLogger
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -17,17 +18,26 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
+data class VizioPairingChallenge(
+    val pairingReqToken: Long,
+    val challengeType: Int = 1
+)
+
 /**
  * Sovereign Vizio SmartCast Protocol Engine:
  * Implements native Vizio HTTPS REST remote protocol over port 7345 / 9000
- * with zero cloud telemetry and zero proprietary vendor SDKs.
+ * with on-screen 4-digit PIN pairing, zero cloud telemetry, and zero proprietary vendor SDKs.
  */
-class VizioSmartCastProtocol(private val client: OkHttpClient? = null) : SmartTvProtocol {
+class VizioSmartCastProtocol(
+    private val context: Context? = null,
+    private val client: OkHttpClient? = null
+) : SmartTvProtocol {
 
     override val protocolId: String = "vizio_smartcast"
     override val deviceType: DeviceType = DeviceType.VIZIO_SMARTCAST
@@ -49,8 +59,100 @@ class VizioSmartCastProtocol(private val client: OkHttpClient? = null) : SmartTv
         candidatePorts = listOf(7345, 9000)
     )
 
+    private val authTokenCache = ConcurrentHashMap<String, String>()
+
     private val httpClient: OkHttpClient by lazy {
         client ?: buildTolerantClient()
+    }
+
+    fun getAuthToken(host: String): String? {
+        authTokenCache[host]?.let { return it }
+        if (context != null) {
+            try {
+                val prefs = context.getSharedPreferences("sovereign_remote", Context.MODE_PRIVATE)
+                val stored = prefs.getString("vizio_auth_$host", null)
+                if (!stored.isNullOrBlank()) {
+                    authTokenCache[host] = stored
+                    return stored
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    fun setAuthToken(host: String, token: String) {
+        authTokenCache[host] = token
+        context?.let { ctx ->
+            try {
+                ctx.getSharedPreferences("sovereign_remote", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("vizio_auth_$host", token)
+                    .apply()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun hasPairingToken(host: String): Boolean = !getAuthToken(host).isNullOrBlank()
+
+    suspend fun startPairing(host: String, port: Int = 7345): Result<VizioPairingChallenge> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://$host:$port/pairing/start"
+            val json = JSONObject().apply {
+                put("DEVICE_ID", "argus_controller")
+                put("DEVICE_NAME", "Argus Remote")
+            }
+            val body = json.toString().toRequestBody("application/json".toMediaType())
+            val req = Request.Builder().url(url).put(body).build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val respJson = JSONObject(resp.body?.string().orEmpty())
+                    val item = respJson.optJSONObject("ITEM")
+                    val token = item?.optLong("PAIRING_REQ_TOKEN") ?: 0L
+                    val challenge = item?.optInt("CHALLENGE_TYPE", 1) ?: 1
+                    Result.success(VizioPairingChallenge(token, challenge))
+                } else {
+                    Result.failure(IOException("Pairing start failed: HTTP ${resp.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitPin(
+        host: String,
+        port: Int = 7345,
+        challenge: VizioPairingChallenge,
+        pin: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://$host:$port/pairing/pair"
+            val json = JSONObject().apply {
+                put("DEVICE_ID", "argus_controller")
+                put("CHALLENGE_TYPE", challenge.challengeType)
+                put("RESPONSE_VALUE", pin.trim())
+                put("PAIRING_REQ_TOKEN", challenge.pairingReqToken)
+            }
+            val body = json.toString().toRequestBody("application/json".toMediaType())
+            val req = Request.Builder().url(url).put(body).build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val respJson = JSONObject(resp.body?.string().orEmpty())
+                    val item = respJson.optJSONObject("ITEM")
+                    val authToken = item?.optString("AUTH_TOKEN")
+                    if (!authToken.isNullOrBlank()) {
+                        setAuthToken(host, authToken)
+                        Result.success(authToken)
+                    } else {
+                        Result.failure(IOException("Invalid PIN or empty token received"))
+                    }
+                } else {
+                    Result.failure(IOException("PIN verification failed: HTTP ${resp.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
@@ -95,9 +197,14 @@ class VizioSmartCastProtocol(private val client: OkHttpClient? = null) : SmartTv
 
         try {
             val body = root.toString().toRequestBody("application/json".toMediaType())
-            val request = Request.Builder().url(url).put(body).build()
+            val reqBuilder = Request.Builder().url(url).put(body)
 
-            httpClient.newCall(request).execute().use { response ->
+            val token = getAuthToken(device.ipAddress)
+            if (!token.isNullOrBlank()) {
+                reqBuilder.addHeader("Auth", token)
+            }
+
+            httpClient.newCall(reqBuilder.build()).execute().use { response ->
                 if (response.isSuccessful || response.code == 200 || response.code == 204) {
                     Result.success(Unit)
                 } else {
@@ -111,7 +218,6 @@ class VizioSmartCastProtocol(private val client: OkHttpClient? = null) : SmartTv
     }
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> = withContext(Dispatchers.IO) {
-        // Vizio Cast fallback
         Result.success(Unit)
     }
 
