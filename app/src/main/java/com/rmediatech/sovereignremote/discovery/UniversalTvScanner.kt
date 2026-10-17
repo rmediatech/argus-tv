@@ -54,7 +54,10 @@ class UniversalTvScanner(
         val activeArpIps = arpMappings.keys.filter { ip ->
             currentSubnet == null || NetworkEnvironmentManager.matchesSubnet(ip, currentSubnet)
         }
-        val sortedCandidates = (activeArpIps + candidateIps).distinct()
+        val gwIp = activeSubnetInfo?.gatewayIp
+        val sortedCandidates = (activeArpIps + candidateIps).distinct().filter { ip ->
+            gwIp.isNullOrBlank() || ip != gwIp
+        }
 
         val scanStartTime = System.currentTimeMillis()
         SovereignLogger.i(
@@ -67,6 +70,9 @@ class UniversalTvScanner(
         withTimeoutOrNull(timeoutMs.toLong()) {
             coroutineScope {
                 fun recordDevice(device: RemoteDevice) {
+                    if (!gwIp.isNullOrBlank() && device.ipAddress == gwIp) {
+                        return // Gateway router is never a TV
+                    }
                     val mac = if (device.macAddress.isNullOrBlank()) {
                         arpMappings[device.ipAddress] ?: WakeOnLan.getMacFromArp(device.ipAddress)
                     } else device.macAddress
