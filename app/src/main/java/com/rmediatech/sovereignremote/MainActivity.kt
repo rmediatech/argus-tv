@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         com.rmediatech.sovereignremote.logging.SovereignLogger.init(applicationContext)
         com.rmediatech.sovereignremote.logging.SovereignLogger.i(
             com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,

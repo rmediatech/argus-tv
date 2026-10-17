@@ -207,4 +207,8 @@ class TvProtocolRegistry(private val context: Context? = null) {
         val protocol = get(device.deviceType)
         return protocol.launchApp(device, appName)
     }
+
+    fun resetConnections(ip: String? = null) {
+        protocols.values.forEach { it.resetConnections(ip) }
+    }
 }

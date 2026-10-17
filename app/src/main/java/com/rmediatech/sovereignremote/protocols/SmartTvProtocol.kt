@@ -42,4 +42,6 @@ interface SmartTvProtocol {
     suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit>
 
     suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit>
+
+    fun resetConnections(ip: String? = null) {}
 }

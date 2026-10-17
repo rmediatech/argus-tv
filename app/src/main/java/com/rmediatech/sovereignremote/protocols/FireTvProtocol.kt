@@ -156,88 +156,108 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.INFO -> 139
         }
 
-        try {
-            val dadb = getDadb(device.ipAddress, 5555)
-            val eventNode = resolveEventNode(device.ipAddress, dadb)
-            val fastCmd = if (key == RemoteKey.INFO) {
-                "input keyevent $keycode || (sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0)"
-            } else {
-                "sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0 || input keyevent $keycode"
-            }
+        for (attempt in 1..2) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+                val eventNode = resolveEventNode(device.ipAddress, dadb)
+                val fastCmd = if (key == RemoteKey.INFO) {
+                    "input keyevent $keycode || (sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0)"
+                } else {
+                    "sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0 || input keyevent $keycode"
+                }
 
-            if (key == RemoteKey.POWER) {
-                var isAsleep = false
-                try {
-                    val pwrState = dadb.shell("dumpsys power").allOutput
-                    isAsleep = pwrState.contains("mWakefulness=Asleep") ||
-                        pwrState.contains("Display Power: state=OFF") ||
-                        pwrState.contains("mHoldingDisplaySuspendBlocker=false")
-                } catch (_: Exception) {}
-
-                if (isAsleep) {
-                    val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
-                    if (!mac.isNullOrBlank()) {
-                        Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} is sleeping. Broadcasting instant WoL to $mac...")
-                        com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
-                    }
-
+                if (key == RemoteKey.POWER) {
+                    var isAsleep = false
                     try {
-                        dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
+                        val pwrState = dadb.shell("dumpsys power").allOutput
+                        isAsleep = pwrState.contains("mWakefulness=Asleep") ||
+                            pwrState.contains("Display Power: state=OFF") ||
+                            pwrState.contains("mHoldingDisplaySuspendBlocker=false")
                     } catch (_: Exception) {}
 
-                    for (attempt in 1..4) {
-                        delay(250)
+                    if (isAsleep) {
+                        val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                        if (!mac.isNullOrBlank()) {
+                            Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} is sleeping. Broadcasting instant WoL to $mac...")
+                            com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
+                        }
+
                         try {
-                            val checkOut = dadb.shell("dumpsys power").allOutput
-                            if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
-                                Log.i("FireTvProtocol", "Fire TV display awakened via KEYCODE_WAKEUP on attempt $attempt")
-                                break
-                            }
+                            dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
                         } catch (_: Exception) {}
-                    }
-                } else {
-                    dadb.shell(fastCmd)
-                }
-                return@withContext Result.success(Unit)
-            }
 
-            // High-throughput fast path via persistent shell stream (<1ms Toybox execution)
-            val stream = getOrCreateShellStream(device.ipAddress, 5555, dadb)
-            if (stream != null) {
-                try {
-                    synchronized(stream) {
-                        stream.write("$fastCmd\n")
+                        for (wakeAttempt in 1..4) {
+                            delay(250)
+                            try {
+                                val checkOut = dadb.shell("dumpsys power").allOutput
+                                if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
+                                    Log.i("FireTvProtocol", "Fire TV display awakened via KEYCODE_WAKEUP on attempt $wakeAttempt")
+                                    break
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    } else {
+                        dadb.shell(fastCmd)
                     }
-                    Log.d("FireTvProtocol", "Piped key $key ($scancode/$keycode) to ${device.ipAddress}")
                     return@withContext Result.success(Unit)
-                } catch (e: Exception) {
-                    Log.w("FireTvProtocol", "Piped shell write failed, resetting stream: ${e.message}")
-                    shellStreamCache.remove("${device.ipAddress}:5555")?.let {
-                        try { it.close() } catch (_: Exception) {}
+                }
+
+                // High-throughput fast path via persistent shell stream (<1ms Toybox execution)
+                val stream = getOrCreateShellStream(device.ipAddress, 5555, dadb)
+                if (stream != null) {
+                    try {
+                        synchronized(stream) {
+                            stream.write("$fastCmd\n")
+                        }
+                        Log.d("FireTvProtocol", "Piped key $key ($scancode/$keycode) to ${device.ipAddress}")
+                        return@withContext Result.success(Unit)
+                    } catch (e: Exception) {
+                        Log.w("FireTvProtocol", "Piped shell write failed, resetting stream & dadb: ${e.message}")
+                        shellStreamCache.remove("${device.ipAddress}:5555")?.let {
+                            try { it.close() } catch (_: Exception) {}
+                        }
+                        dadbCache.remove("${device.ipAddress}:5555")
+                        if (attempt == 1) continue
                     }
                 }
-            }
 
-            // Fallback: direct adb shell execution
-            dadb.shell(fastCmd)
-            Log.d("FireTvProtocol", "Successfully sent key $key ($scancode/$keycode) to ${device.ipAddress}")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Log.w("FireTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
-            dadbCache.remove("${device.ipAddress}:5555")
-            shellStreamCache.remove("${device.ipAddress}:5555")?.let {
-                try { it.close() } catch (_: Exception) {}
-            }
-
-            if (key == RemoteKey.POWER) {
-                val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
-                if (!mac.isNullOrBlank()) {
-                    Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} fallback: Broadcasting WoL to $mac...")
-                    com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
+                // Direct adb execution path
+                dadb.shell(fastCmd)
+                Log.d("FireTvProtocol", "Successfully sent key $key ($scancode/$keycode) to ${device.ipAddress}")
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                Log.w("FireTvProtocol", "ADB command attempt $attempt failed on ${device.ipAddress}: ${e.message}")
+                dadbCache.remove("${device.ipAddress}:5555")
+                shellStreamCache.remove("${device.ipAddress}:5555")?.let {
+                    try { it.close() } catch (_: Exception) {}
                 }
-            }
 
-            Result.failure(e)
+                if (attempt == 1) {
+                    continue // Ground-floor self-healing: retry once with fresh socket connection
+                }
+
+                if (key == RemoteKey.POWER) {
+                    val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                    if (!mac.isNullOrBlank()) {
+                        Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} fallback: Broadcasting WoL to $mac...")
+                        com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
+                    }
+                }
+
+                return@withContext Result.failure(e)
+            }
+        }
+        Result.failure(Exception("Failed to send key $key to ${device.ipAddress} after self-healing retry"))
+    }
+
+    override fun resetConnections(ip: String?) {
+        if (ip == null) {
+            dadbCache.clear()
+            shellStreamCache.values.forEach { try { it.close() } catch (_: Exception) {} }
+            shellStreamCache.clear()
+        } else {
+            dadbCache.remove("$ip:5555")
+            shellStreamCache.remove("$ip:5555")?.let { try { it.close() } catch (_: Exception) {} }
         }
     }
 

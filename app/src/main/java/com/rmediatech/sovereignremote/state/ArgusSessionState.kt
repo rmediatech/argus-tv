@@ -202,6 +202,7 @@ class ArgusSessionState(
 
     fun onResumeNetworkCheck() {
         NetworkEnvironmentManager.clearGatewayHardwareCache()
+        registry.resetConnections()
         val fresh = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         if (fresh?.networkId != activeSubnetInfo?.networkId) {
             runDiscovery()
