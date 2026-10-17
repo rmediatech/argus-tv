@@ -5,8 +5,20 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.util.Log
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.net.Inet4Address
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.Socket
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * Sovereign Network Environment Manager:
@@ -21,22 +33,119 @@ data class SubnetInfo(
     val broadcastIp: String,  // e.g. "192.168.0.255"
     val gatewayIp: String? = null,
     val gatewayMac: String? = null,
-    val networkId: String = computeNetworkId(gatewayMac, subnetPrefix)
+    val gatewayHardwareId: String? = null,
+    val networkId: String = computeNetworkId(gatewayMac, subnetPrefix, gatewayHardwareId)
 ) {
     companion object {
-        fun computeNetworkId(gatewayMac: String?, subnetPrefix: String): String {
+        fun computeNetworkId(gatewayMac: String?, subnetPrefix: String, gatewayHardwareId: String? = null): String {
             val cleanMac = gatewayMac?.replace("[:-]".toRegex(), "")?.lowercase()?.trim()
-            return if (!cleanMac.isNullOrBlank() && cleanMac != "000000000000") {
-                "net_${cleanMac}_${subnetPrefix}"
-            } else {
-                "net_subnet_${subnetPrefix}"
+            if (!cleanMac.isNullOrBlank() && cleanMac != "000000000000") {
+                return "net_${cleanMac}_${subnetPrefix}"
             }
+            val cleanHw = gatewayHardwareId?.replace("[^a-zA-Z0-9]".toRegex(), "")?.lowercase()?.take(16)
+            if (!cleanHw.isNullOrBlank()) {
+                return "net_hw_${cleanHw}_${subnetPrefix}"
+            }
+            return "net_subnet_${subnetPrefix}"
         }
     }
 }
 
 object NetworkEnvironmentManager {
     private const val TAG = "NetworkEnv"
+    private val cachedGatewayHwMap = ConcurrentHashMap<String, String>()
+
+    fun getCachedGatewayHardwareId(context: Context?, gatewayIp: String?): String? {
+        if (gatewayIp.isNullOrBlank()) return null
+        cachedGatewayHwMap[gatewayIp]?.let { return it }
+        if (context != null) {
+            try {
+                val prefs = context.getSharedPreferences("sovereign_network_env", Context.MODE_PRIVATE)
+                val stored = prefs.getString("gw_hw_$gatewayIp", null)
+                if (!stored.isNullOrBlank()) {
+                    cachedGatewayHwMap[gatewayIp] = stored
+                    return stored
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    fun recordGatewayHardwareId(context: Context?, gatewayIp: String?, hardwareId: String) {
+        val clean = hardwareId.replace("[^a-zA-Z0-9]".toRegex(), "").lowercase().take(16)
+        if (clean.isNotBlank() && !gatewayIp.isNullOrBlank()) {
+            cachedGatewayHwMap[gatewayIp] = clean
+            context?.let { ctx ->
+                try {
+                    ctx.getSharedPreferences("sovereign_network_env", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString("gw_hw_$gatewayIp", clean)
+                        .apply()
+                } catch (_: Exception) {}
+            }
+            Log.d(TAG, "Recorded gateway hardware fingerprint for $gatewayIp: $clean")
+        }
+    }
+
+    fun probeGatewayHardwareId(gatewayIp: String): String? {
+        if (gatewayIp.isBlank()) return null
+        cachedGatewayHwMap[gatewayIp]?.let { return it }
+
+        // 1. Fast TLS Cert Fingerprint on Port 443 (150ms timeout)
+        try {
+            val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            })
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAll, SecureRandom())
+            val factory = sslContext.socketFactory
+            (factory.createSocket() as SSLSocket).use { s ->
+                s.soTimeout = 150
+                s.connect(InetSocketAddress(gatewayIp, 443), 150)
+                s.startHandshake()
+                val cert = s.session.peerCertificates.firstOrNull() as? X509Certificate
+                if (cert != null) {
+                    val digest = MessageDigest.getInstance("SHA-256").digest(cert.encoded)
+                    val fp = digest.take(8).joinToString("") { "%02x".format(it) }
+                    cachedGatewayHwMap[gatewayIp] = fp
+                    Log.d(TAG, "Probed gateway TLS cert fingerprint: $fp on $gatewayIp:443")
+                    return fp
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 2. Fast HTTP Banner / Realm on Port 80 (150ms timeout)
+        try {
+            Socket().use { s ->
+                s.soTimeout = 150
+                s.connect(InetSocketAddress(gatewayIp, 80), 150)
+                val out = s.getOutputStream()
+                out.write("HEAD / HTTP/1.0\r\nHost: $gatewayIp\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                out.flush()
+                val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.US_ASCII))
+                val sb = StringBuilder()
+                var line: String?
+                var linesRead = 0
+                while (reader.readLine().also { line = it } != null && linesRead++ < 15) {
+                    val l = line?.lowercase() ?: continue
+                    if (l.startsWith("server:") || l.startsWith("www-authenticate:") || l.startsWith("location:")) {
+                        sb.append(line).append(";")
+                    }
+                }
+                if (sb.isNotEmpty()) {
+                    val digest = MessageDigest.getInstance("SHA-256").digest(sb.toString().toByteArray(Charsets.UTF_8))
+                    val fp = digest.take(8).joinToString("") { "%02x".format(it) }
+                    cachedGatewayHwMap[gatewayIp] = fp
+                    Log.d(TAG, "Probed gateway HTTP banner fingerprint: $fp on $gatewayIp:80")
+                    return fp
+                }
+            }
+        } catch (_: Throwable) {}
+
+        return null
+    }
 
     /**
      * Resolves the active network's IPv4 configuration.
@@ -76,12 +185,13 @@ object NetworkEnvironmentManager {
                                 if (addr is Inet4Address && !addr.isLoopbackAddress && !addr.isLinkLocalAddress) {
                                     if (gwIp.isNullOrBlank()) gwIp = getDefaultGatewayIpFromRoute()
                                     val gwMac = gwIp?.let { WakeOnLan.getMacFromArp(it) }
-                                    val info = computeSubnetInfo(addr, la.prefixLength, gwIp, gwMac)
+                                    val gwHwId = getCachedGatewayHardwareId(context, gwIp)
+                                    val info = computeSubnetInfo(addr, la.prefixLength, gwIp, gwMac, gwHwId)
                                     if (info != null) {
                                         Log.d(TAG, "Resolved active subnet via ConnectivityManager: $info (networkId=${info.networkId})")
                                         com.rmediatech.sovereignremote.logging.SovereignLogger.i(
                                             com.rmediatech.sovereignremote.logging.SovereignLogger.Category.NETWORK,
-                                            "Active subnet resolved: ${info.localIp}/${info.prefixLength} (gw=${info.gatewayIp}, gwMac=${info.gatewayMac}, netId=${info.networkId})"
+                                            "Active subnet resolved: ${info.localIp}/${info.prefixLength} (gw=${info.gatewayIp}, gwMac=${info.gatewayMac}, hwId=${info.gatewayHardwareId}, netId=${info.networkId})"
                                         )
                                         return info
                                     }
@@ -101,6 +211,7 @@ object NetworkEnvironmentManager {
             if (interfaces != null) {
                 if (gwIp.isNullOrBlank()) gwIp = getDefaultGatewayIpFromRoute()
                 val gwMac = gwIp?.let { WakeOnLan.getMacFromArp(it) }
+                val gwHwId = getCachedGatewayHardwareId(context, gwIp)
 
                 for (intf in interfaces) {
                     if (intf.isLoopback) continue
@@ -112,7 +223,7 @@ object NetworkEnvironmentManager {
                         val addr = ia.address
                         if (addr is Inet4Address && !addr.isLoopbackAddress) {
                             val prefix = ia.networkPrefixLength.toInt()
-                            val info = computeSubnetInfo(addr, if (prefix in 8..30) prefix else 24, gwIp, gwMac)
+                            val info = computeSubnetInfo(addr, if (prefix in 8..30) prefix else 24, gwIp, gwMac, gwHwId)
                             if (info != null) {
                                 Log.d(TAG, "Resolved active subnet via NetworkInterface (${intf.name}): $info (networkId=${info.networkId})")
                                 return info
@@ -143,6 +254,7 @@ object NetworkEnvironmentManager {
                     val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
                     if (gwIp.isNullOrBlank()) gwIp = getDefaultGatewayIpFromRoute()
                     val gwMac = gwIp?.let { WakeOnLan.getMacFromArp(it) }
+                    val gwHwId = getCachedGatewayHardwareId(context, gwIp)
                     return SubnetInfo(
                         localIp = ipStr,
                         subnetPrefix = prefix,
@@ -151,7 +263,8 @@ object NetworkEnvironmentManager {
                         broadcastIp = "$prefix.255",
                         gatewayIp = gwIp,
                         gatewayMac = gwMac,
-                        networkId = SubnetInfo.computeNetworkId(gwMac, prefix)
+                        gatewayHardwareId = gwHwId,
+                        networkId = SubnetInfo.computeNetworkId(gwMac, prefix, gwHwId)
                     )
                 }
             }
@@ -199,7 +312,8 @@ object NetworkEnvironmentManager {
         addr: Inet4Address,
         prefixLength: Int,
         gatewayIp: String? = null,
-        gatewayMac: String? = null
+        gatewayMac: String? = null,
+        gatewayHardwareId: String? = null
     ): SubnetInfo? {
         val hostIp = addr.hostAddress ?: return null
         val parts = hostIp.split(".")
@@ -228,7 +342,8 @@ object NetworkEnvironmentManager {
             broadcastIp = broadcastIp,
             gatewayIp = gatewayIp,
             gatewayMac = gatewayMac,
-            networkId = SubnetInfo.computeNetworkId(gatewayMac, subnetPrefix)
+            gatewayHardwareId = gatewayHardwareId,
+            networkId = SubnetInfo.computeNetworkId(gatewayMac, subnetPrefix, gatewayHardwareId)
         )
     }
 

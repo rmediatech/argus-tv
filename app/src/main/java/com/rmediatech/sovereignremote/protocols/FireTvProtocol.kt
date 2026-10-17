@@ -40,13 +40,29 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     private fun resolveEventNode(ip: String, dadb: Dadb): String {
         return eventNodeCache.computeIfAbsent(ip) {
             try {
-                val devices = dadb.shell("cat /proc/bus/input/devices").allOutput
-                val regex = Regex("""Handlers=.*?(event\d+)""")
-                val match = regex.findAll(devices).firstOrNull { it.value.contains("kbd") }
-                    ?: regex.find(devices)
-                match?.groupValues?.get(1) ?: "event0"
-            } catch (_: Exception) {
-                "event0"
+                val output = dadb.shell("getevent -S").allOutput
+                val deviceBlocks = output.split("add device")
+                var remoteNode: String? = null
+                var kbdNode: String? = null
+                val nodeRegex = Regex("""/dev/input/(event\d+)""")
+
+                for (block in deviceBlocks) {
+                    val nodeMatch = nodeRegex.find(block)?.groupValues?.get(1) ?: continue
+                    val lower = block.lowercase()
+                    if (lower.contains("amazon fire tv remote") || lower.contains("remote")) {
+                        remoteNode = nodeMatch
+                        break
+                    } else if (lower.contains("keyboard") || lower.contains("amzkeyboard") || lower.contains("kbd")) {
+                        kbdNode = nodeMatch
+                    }
+                }
+
+                val resolved = remoteNode ?: kbdNode ?: "event4"
+                Log.d("FireTvProtocol", "Resolved input event node for $ip: $resolved")
+                resolved
+            } catch (e: Exception) {
+                Log.w("FireTvProtocol", "Could not resolve event node on $ip: ${e.message}")
+                "event4"
             }
         }
     }
@@ -143,7 +159,11 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         try {
             val dadb = getDadb(device.ipAddress, 5555)
             val eventNode = resolveEventNode(device.ipAddress, dadb)
-            val fastCmd = "sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0 || input keyevent $keycode"
+            val fastCmd = if (key == RemoteKey.INFO) {
+                "input keyevent $keycode || (sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0)"
+            } else {
+                "sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0 || input keyevent $keycode"
+            }
 
             if (key == RemoteKey.POWER) {
                 var isAsleep = false
@@ -249,17 +269,21 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             try {
                 withTimeout(400) {
                     val quickDadb = Dadb.create(host, port, keyPair, 400, 400)
-                    val rawModel = quickDadb.shell("getprop ro.product.model").allOutput.trim()
-                    if (rawModel.isNotBlank()) {
-                        model = when (rawModel) {
-                            "AFTKA002" -> "Fire TV Stick 4K Max"
-                            "AFTMM" -> "Fire TV Stick 4K"
-                            "AFTSSS" -> "Fire TV Stick 4K Max"
-                            "AFTT", "AFTKM" -> "Fire TV Stick"
-                            "AFTB" -> "Fire TV Cube"
-                            else -> "Fire TV ($rawModel)"
+                    try {
+                        val rawModel = quickDadb.shell("getprop ro.product.model").allOutput.trim()
+                        if (rawModel.isNotBlank()) {
+                            model = when (rawModel) {
+                                "AFTKA002" -> "Fire TV Stick 4K Max"
+                                "AFTMM" -> "Fire TV Stick 4K"
+                                "AFTSSS" -> "Fire TV Stick 4K Max"
+                                "AFTT", "AFTKM" -> "Fire TV Stick"
+                                "AFTB" -> "Fire TV Cube"
+                                else -> "Fire TV ($rawModel)"
+                            }
+                            name = model
                         }
-                        name = model
+                    } finally {
+                        try { quickDadb.close() } catch (_: Throwable) {}
                     }
                 }
             } catch (_: Throwable) {}

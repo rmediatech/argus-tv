@@ -35,6 +35,7 @@ fun DeviceSelectionDialog(
     hiddenIps: Set<String>,
     activeSubnetPrefix: String?,
     activeNetworkId: String? = null,
+    activeSessionIps: Set<String> = emptySet(),
     isScanning: Boolean,
     onSelectDevice: (RemoteDevice) -> Unit,
     onToggleHideDevice: (String) -> Unit,
@@ -68,23 +69,17 @@ fun DeviceSelectionDialog(
         },
         text = {
             Column {
-                val activeDevices = discoveredDevices.filter {
-                    if (!activeNetworkId.isNullOrBlank()) {
-                        it.effectiveNetworkId == activeNetworkId
-                    } else if (!activeSubnetPrefix.isNullOrBlank()) {
-                        it.effectiveSubnet == activeSubnetPrefix
+                val activeDevices = discoveredDevices.filter { dev ->
+                    if (!activeNetworkId.isNullOrBlank() && dev.effectiveNetworkId == activeNetworkId) {
+                        true
+                    } else if (!activeSubnetPrefix.isNullOrBlank() && dev.effectiveSubnet == activeSubnetPrefix) {
+                        true
                     } else {
-                        false
+                        activeNetworkId.isNullOrBlank() && activeSubnetPrefix.isNullOrBlank()
                     }
                 }
-                val otherDevices = discoveredDevices.filter {
-                    if (!activeNetworkId.isNullOrBlank()) {
-                        it.effectiveNetworkId != activeNetworkId
-                    } else if (!activeSubnetPrefix.isNullOrBlank()) {
-                        it.effectiveSubnet != activeSubnetPrefix
-                    } else {
-                        true
-                    }
+                val otherDevices = discoveredDevices.filter { dev ->
+                    !activeDevices.any { it.ipAddress == dev.ipAddress }
                 }
 
                 val visibleActive = activeDevices.filter { !hiddenIps.contains(it.ipAddress) }
@@ -175,11 +170,22 @@ fun DeviceSelectionDialog(
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
+                                        if (activeSessionIps.contains(device.ipAddress)) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(7.dp)
+                                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                                    .background(Color(0xFF00E676))
+                                            )
+                                        }
                                     }
+                                    val isOnline = activeSessionIps.contains(device.ipAddress)
+                                    val statusText = if (isOnline) " • ONLINE" else " • STANDBY"
                                     Text(
-                                        "${device.ipAddress} • " + (if (device.isEthernet) "Ethernet" else "Wi-Fi") + (device.modelName?.let { " • $it" } ?: ""),
+                                        "${device.ipAddress} • " + (if (device.isEthernet) "Ethernet" else "Wi-Fi") + (device.modelName?.let { " • $it" } ?: "") + statusText,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = palette.textSecondary,
+                                        color = if (isOnline) palette.textPrimary else palette.textSecondary,
                                         fontSize = 10.sp
                                     )
                                 }

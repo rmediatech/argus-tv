@@ -60,7 +60,13 @@ class SonyBraviaProtocol(private val client: OkHttpClient? = null) : SmartTvProt
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful || response.code == 403 || response.code == 401) {
+                val body = response.body?.string().orEmpty()
+                val server = response.header("Server").orEmpty().lowercase()
+                val isSony = (response.isSuccessful || response.code == 403 || response.code == 401) &&
+                    (server.contains("sony") || server.contains("ircc") || server.contains("upnp") ||
+                     body.contains(""""result"""") || body.contains(""""error""""))
+
+                if (isSony) {
                     val mac = WakeOnLan.getMacFromArp(host)
                     RemoteDevice(
                         id = "sony_$host",

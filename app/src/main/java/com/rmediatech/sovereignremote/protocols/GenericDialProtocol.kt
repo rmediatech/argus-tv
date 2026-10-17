@@ -119,6 +119,7 @@ class GenericDialProtocol : SmartTvProtocol {
                                 mfg.contains("Samsung", ignoreCase = true) || inferred == DeviceType.SAMSUNG_TIZEN -> DeviceType.SAMSUNG_TIZEN
                                 mfg.contains("LG", ignoreCase = true) || inferred == DeviceType.LG_WEBOS -> DeviceType.LG_WEBOS
                                 mfg.contains("Roku", ignoreCase = true) || inferred == DeviceType.ROKU -> DeviceType.ROKU
+                                mfg.contains("Vizio", ignoreCase = true) || name.contains("Vizio", ignoreCase = true) || inferred == DeviceType.VIZIO_SMARTCAST -> DeviceType.VIZIO_SMARTCAST
                                 mfg.contains("Google", ignoreCase = true) || mfg.contains("Hisense", ignoreCase = true) ||
                                     mfg.contains("TCL", ignoreCase = true) || mfg.contains("Sony", ignoreCase = true) || inferred == DeviceType.GOOGLE_TV || inferred == DeviceType.SONY_BRAVIA -> DeviceType.GOOGLE_TV
                                 else -> inferred ?: DeviceType.GENERIC

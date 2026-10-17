@@ -47,6 +47,9 @@ class ArgusSessionState(
     var hiddenIps by mutableStateOf(prefs.getStringSet("hidden_device_ips", emptySet()) ?: emptySet())
         private set
 
+    var activeSessionIps by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     var currentDevice by mutableStateOf<RemoteDevice?>(null)
         private set
 
@@ -72,7 +75,8 @@ class ArgusSessionState(
 
     private fun cleanStaleDevices() {
         val cleaned = discoveredDevices.filterNot {
-            it.deviceType == DeviceType.GENERIC && (it.port == 8080 || it.port == 80 || it.port == 60000)
+            (it.deviceType == DeviceType.GENERIC && (it.port == 8080 || it.port == 80 || it.port == 60000)) ||
+            (it.deviceType == DeviceType.SONY_BRAVIA && it.ipAddress.endsWith(".1") && it.port == 80)
         }
         if (cleaned.size != discoveredDevices.size) {
             discoveredDevices = cleaned
@@ -172,6 +176,8 @@ class ArgusSessionState(
         val fresh = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         if (fresh?.networkId != activeSubnetInfo?.networkId) {
             runDiscovery()
+        } else {
+            startLivenessMonitoring()
         }
     }
 
@@ -194,12 +200,12 @@ class ArgusSessionState(
         // Immediately restore saved device on this network if known, or detach foreign network device
         if (activeNetId.isNotBlank()) {
             val netEligible = discoveredDevices.filter {
-                !hiddenIps.contains(it.ipAddress) && it.effectiveNetworkId == activeNetId
+                !hiddenIps.contains(it.ipAddress) && (it.effectiveNetworkId == activeNetId || (activePrefix.isNotBlank() && it.effectiveSubnet == activePrefix))
             }
             val restored = netEligible.find { it.ipAddress == netLastIp } ?: netEligible.firstOrNull()
             if (restored != null) {
                 currentDevice = restored
-            } else if (currentDevice != null && currentDevice?.effectiveNetworkId != activeNetId) {
+            } else if (currentDevice != null && currentDevice?.effectiveNetworkId != activeNetId && (activePrefix.isBlank() || currentDevice?.effectiveSubnet != activePrefix)) {
                 currentDevice = null
             }
         } else if (currentDevice != null && activeNetId.isNotBlank() && currentDevice?.effectiveNetworkId != activeNetId) {
@@ -208,18 +214,37 @@ class ArgusSessionState(
 
         scope.launch {
             try {
+                // Background hardware gateway resolution if not already cached
+                val gwIp = freshNetInfo?.gatewayIp
+                if (!gwIp.isNullOrBlank() && freshNetInfo?.gatewayHardwareId == null) {
+                    val probedHw = withContext(Dispatchers.IO) {
+                        NetworkEnvironmentManager.probeGatewayHardwareId(gwIp)
+                    }
+                    if (probedHw != null) {
+                        NetworkEnvironmentManager.recordGatewayHardwareId(context, gwIp, probedHw)
+                        val updatedNet = NetworkEnvironmentManager.getActiveSubnetInfo(context)
+                        if (updatedNet != null) {
+                            activeSubnetInfo = updatedNet
+                        }
+                    }
+                }
+
+                activeSessionIps = emptySet()
+                val currentEffectiveNetId = activeSubnetInfo?.networkId ?: activeNetId
                 val results = scanner.discoverAll(
                     timeoutMs = 3500,
                     onDeviceFound = { liveDev ->
+                        activeSessionIps = activeSessionIps + liveDev.ipAddress
+                        val targetNetId = activeSubnetInfo?.networkId ?: currentEffectiveNetId
                         val sanitized = liveDev.copy(
                             name = SovereignSanitizer.sanitizeDeviceName(liveDev.name),
                             modelName = SovereignSanitizer.sanitizeModelName(liveDev.modelName),
-                            networkId = liveDev.networkId ?: activeNetId.takeIf { it.isNotBlank() }
+                            networkId = targetNetId.takeIf { it.isNotBlank() } ?: liveDev.networkId
                         )
                         val updated = DeviceSerializer.merge(discoveredDevices, listOf(sanitized))
                         discoveredDevices = updated
                         prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(updated)).apply()
-                        if (currentDevice == null && (activeNetId.isBlank() || sanitized.effectiveNetworkId == activeNetId)) {
+                        if (currentDevice == null && (targetNetId.isBlank() || sanitized.effectiveNetworkId == targetNetId)) {
                             currentDevice = sanitized
                             prefs.edit()
                                 .putString("last_selected_ip", sanitized.ipAddress)
@@ -228,26 +253,35 @@ class ArgusSessionState(
                         }
                     }
                 )
+                val activeHwNetId = activeSubnetInfo?.networkId ?: currentEffectiveNetId
                 val sanitizedResults = results.map { dev ->
                     dev.copy(
                         name = SovereignSanitizer.sanitizeDeviceName(dev.name),
                         modelName = SovereignSanitizer.sanitizeModelName(dev.modelName),
-                        networkId = dev.networkId ?: activeNetId.takeIf { it.isNotBlank() }
+                        networkId = activeHwNetId.takeIf { it.isNotBlank() } ?: dev.networkId
                     )
                 }
+                activeSessionIps = activeSessionIps + sanitizedResults.map { it.ipAddress }
                 val merged = DeviceSerializer.merge(discoveredDevices, sanitizedResults)
                 discoveredDevices = merged
                 prefs.edit().putString("saved_devices_json", DeviceSerializer.serialize(merged)).apply()
 
                 val eligible = merged.filter {
-                    !hiddenIps.contains(it.ipAddress) && (activeNetId.isBlank() || it.effectiveNetworkId == activeNetId)
+                    !hiddenIps.contains(it.ipAddress) && (activeHwNetId.isBlank() || it.effectiveNetworkId == activeHwNetId || (activePrefix.isNotBlank() && it.effectiveSubnet == activePrefix))
                 }
+                // Under-the-waterline invariant: Prioritize devices physically confirmed online in this scan session
+                val onlineConfirmed = eligible.filter { activeSessionIps.contains(it.ipAddress) }
+                val candidates = if (onlineConfirmed.isNotEmpty()) onlineConfirmed else eligible
                 val prefIp = netLastIp ?: prefs.getString("last_selected_ip", null)
-                val preferred = eligible.find { it.ipAddress == prefIp }
-                    ?: eligible.find { it.deviceType == DeviceType.FIRE_TV || it.deviceType == DeviceType.GOOGLE_TV || it.deviceType == DeviceType.ROKU }
-                    ?: eligible.firstOrNull()
+                val preferred = candidates.find { it.ipAddress == prefIp }
+                    ?: candidates.find { it.deviceType == DeviceType.FIRE_TV || it.deviceType == DeviceType.GOOGLE_TV || it.deviceType == DeviceType.ROKU }
+                    ?: candidates.firstOrNull()
 
-                if (preferred != null && (currentDevice == null || (activeNetId.isNotBlank() && currentDevice?.effectiveNetworkId != activeNetId))) {
+                if (preferred != null && (
+                    currentDevice == null || 
+                    (activeHwNetId.isNotBlank() && currentDevice?.effectiveNetworkId != activeHwNetId && (activePrefix.isBlank() || currentDevice?.effectiveSubnet != activePrefix)) ||
+                    (activeSessionIps.isNotEmpty() && currentDevice != null && !activeSessionIps.contains(currentDevice?.ipAddress))
+                )) {
                     currentDevice = preferred
                 }
             } catch (e: Exception) {
@@ -368,6 +402,7 @@ class ArgusSessionState(
             } else {
                 lastAckLatencyMs = -1L
                 isAckActive = true
+                livenessState = DeviceLivenessState.DISCONNECTED
                 com.rmediatech.sovereignremote.logging.SovereignLogger.w(
                     com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
                     "sendKey($key) FAILED on ${device.ipAddress}: ${dispatch.error?.message}"

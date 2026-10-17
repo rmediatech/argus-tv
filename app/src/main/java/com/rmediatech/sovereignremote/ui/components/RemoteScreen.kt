@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.rmediatech.sovereignremote.model.DeviceLivenessState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
@@ -33,6 +35,7 @@ fun RemoteScreen(
     hiddenIps: Set<String> = emptySet(),
     activeSubnetPrefix: String? = null,
     activeNetworkId: String? = null,
+    activeSessionIps: Set<String> = emptySet(),
     isScanning: Boolean,
     livenessState: DeviceLivenessState = DeviceLivenessState.DISCONNECTED,
     lastAckLatencyMs: Long? = null,
@@ -177,10 +180,8 @@ fun RemoteScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Target Device Card
-                val cardBorderColor = if (isAckActive) {
-                    if (lastAckLatencyMs == -1L) Color(0xFFFF1744) else palette.primaryAccent
-                } else palette.border
-                val cardBorderWidth = if (isAckActive) 1.5.dp else 1.dp
+                val cardBorderColor = palette.border
+                val cardBorderWidth = 1.dp
 
                 Row(
                     modifier = Modifier
@@ -262,7 +263,7 @@ fun RemoteScreen(
 
                             val ackText = when {
                                 lastAckLatencyMs != null && lastAckLatencyMs >= 0 -> " • ACK < ${lastAckLatencyMs.coerceAtLeast(1)}ms"
-                                lastAckLatencyMs == -1L -> " • TIMEOUT"
+                                lastAckLatencyMs == -1L -> " • TIMEOUT (TV Not Responding)"
                                 else -> ""
                             }
                             Text(
@@ -409,6 +410,7 @@ fun RemoteScreen(
                 hiddenIps = hiddenIps,
                 activeSubnetPrefix = activeSubnetPrefix,
                 activeNetworkId = activeNetworkId,
+                activeSessionIps = activeSessionIps,
                 isScanning = isScanning,
                 onSelectDevice = onSelectDevice,
                 onToggleHideDevice = onToggleHideDevice,
@@ -449,20 +451,34 @@ fun TacticalRoundButton(
     onClick: () -> Unit
 ) {
     val palette = LocalThemePalette.current
+    var isPressed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(54.dp)
                 .clip(CircleShape)
-                .background(palette.surface)
-                .border(1.dp, accentColor.copy(alpha = 0.6f), CircleShape)
-                .clickable { onClick() },
+                .background(if (isPressed) accentColor.copy(alpha = 0.25f) else palette.surface)
+                .border(
+                    width = if (isPressed) 2.dp else 1.dp,
+                    color = if (isPressed) accentColor else accentColor.copy(alpha = 0.6f),
+                    shape = CircleShape
+                )
+                .clickable {
+                    scope.launch {
+                        isPressed = true
+                        delay(150)
+                        isPressed = false
+                    }
+                    onClick()
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = accentColor,
+                tint = if (isPressed) Color.White else accentColor,
                 modifier = Modifier.size(24.dp)
             )
         }

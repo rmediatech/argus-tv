@@ -22,21 +22,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
-            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,
-            "MainActivity.onResume() — active Wi-Fi check"
-        )
-        if (::sessionState.isInitialized) {
-            sessionState.onResumeNetworkCheck()
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        com.rmediatech.sovereignremote.logging.SovereignLogger.i(
-            com.rmediatech.sovereignremote.logging.SovereignLogger.Category.LIFECYCLE,
-            "MainActivity.onPause() — backgrounding"
-        )
+        if (::sessionState.isInitialized) sessionState.onResumeNetworkCheck()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,6 +48,7 @@ class MainActivity : ComponentActivity() {
                     hiddenIps = sessionState.hiddenIps,
                     activeSubnetPrefix = sessionState.currentSubnetPrefix.takeIf { it.isNotBlank() },
                     activeNetworkId = sessionState.currentNetworkId.takeIf { it.isNotBlank() },
+                    activeSessionIps = sessionState.activeSessionIps,
                     isScanning = sessionState.isScanning,
                     livenessState = sessionState.livenessState,
                     lastAckLatencyMs = sessionState.lastAckLatencyMs,

@@ -265,6 +265,19 @@ class UniversalTvScanner(
                         val ip = responsePacket.address.hostAddress ?: continue
                         val responseStr = String(responsePacket.data, 0, responsePacket.length, Charsets.UTF_8)
 
+                        // Seamlessly harvest gateway router hardware UUID to partition networks
+                        if (responseStr.contains("InternetGatewayDevice", ignoreCase = true) ||
+                            responseStr.contains("WANConnectionDevice", ignoreCase = true) ||
+                            responseStr.contains("WANDevice", ignoreCase = true) ||
+                            ip.endsWith(".1")
+                        ) {
+                            val uuidMatch = Regex("""uuid:([a-f0-9-]+)""", RegexOption.IGNORE_CASE).find(responseStr)
+                            val uuid = uuidMatch?.groupValues?.get(1)
+                            if (!uuid.isNullOrBlank()) {
+                                NetworkEnvironmentManager.recordGatewayHardwareId(context, ip, uuid)
+                            }
+                        }
+
                         launch {
                             val dev = registry.dispatchSsdp(ip, 8008, responseStr)
                             if (dev != null) {

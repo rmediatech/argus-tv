@@ -108,6 +108,13 @@ class NetworkEnvironmentManagerTest {
     }
 
     @Test
+    fun testComputeNetworkIdWithHardwareFingerprintWhenMacNull() {
+        val hwFingerprint = "77874381cd1b1fd1"
+        val expected = "net_hw_77874381cd1b1fd1_192.168.1"
+        assertEquals(expected, SubnetInfo.computeNetworkId(null, "192.168.1", hwFingerprint))
+    }
+
+    @Test
     fun testMultiLocationSameSubnetCollisionResolution() {
         // Both Home and Friend's house use the common default 192.168.1.0/24 subnet.
         val homeGatewayMac = "50:c7:bf:aa:bb:cc"

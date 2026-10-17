@@ -42,6 +42,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (hasKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            isDebuggable = true
+        }
         release {
             isMinifyEnabled = false
             if (hasKeystore) {
