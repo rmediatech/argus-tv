@@ -128,7 +128,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.DOWN -> 20
             RemoteKey.LEFT -> 21
             RemoteKey.RIGHT -> 22
-            RemoteKey.SELECT -> 66
+            RemoteKey.SELECT -> 23
             RemoteKey.VOLUME_UP -> 24
             RemoteKey.VOLUME_DOWN -> 25
             RemoteKey.MUTE -> 164
@@ -146,7 +146,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.DOWN -> 108
             RemoteKey.LEFT -> 105
             RemoteKey.RIGHT -> 106
-            RemoteKey.SELECT -> 28
+            RemoteKey.SELECT -> 96
             RemoteKey.VOLUME_UP -> 115
             RemoteKey.VOLUME_DOWN -> 114
             RemoteKey.MUTE -> 113

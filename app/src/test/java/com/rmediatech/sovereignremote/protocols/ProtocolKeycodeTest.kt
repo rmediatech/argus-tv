@@ -26,14 +26,14 @@ class ProtocolKeycodeTest {
             RemoteKey.DOWN to 20,
             RemoteKey.LEFT to 21,
             RemoteKey.RIGHT to 22,
-            RemoteKey.SELECT to 66,
+            RemoteKey.SELECT to 23,
             RemoteKey.VOLUME_UP to 24,
             RemoteKey.VOLUME_DOWN to 25,
             RemoteKey.MUTE to 164,
             RemoteKey.PLAY_PAUSE to 85,
             RemoteKey.REWIND to 89,
             RemoteKey.FAST_FORWARD to 90,
-            RemoteKey.INFO to 82
+            RemoteKey.INFO to 176
         )
 
         for ((key, expectedCode) in expectedCodes) {
@@ -45,16 +45,58 @@ class ProtocolKeycodeTest {
                 RemoteKey.DOWN -> 20
                 RemoteKey.LEFT -> 21
                 RemoteKey.RIGHT -> 22
-                RemoteKey.SELECT -> 66
+                RemoteKey.SELECT -> 23
                 RemoteKey.VOLUME_UP -> 24
                 RemoteKey.VOLUME_DOWN -> 25
                 RemoteKey.MUTE -> 164
                 RemoteKey.PLAY_PAUSE -> 85
                 RemoteKey.REWIND -> 89
                 RemoteKey.FAST_FORWARD -> 90
-                RemoteKey.INFO -> 82
+                RemoteKey.INFO -> 176
             }
             assertEquals("Key ${key.name} must map to keycode $expectedCode", expectedCode, keycode)
+        }
+    }
+
+    @Test
+    fun testFireTvHardwareScancodes() {
+        val expectedScancodes = mapOf(
+            RemoteKey.POWER to 116,
+            RemoteKey.HOME to 172,
+            RemoteKey.BACK to 158,
+            RemoteKey.UP to 103,
+            RemoteKey.DOWN to 108,
+            RemoteKey.LEFT to 105,
+            RemoteKey.RIGHT to 106,
+            RemoteKey.SELECT to 96, // BLE Kumquat Remote DPAD_CENTER
+            RemoteKey.VOLUME_UP to 115,
+            RemoteKey.VOLUME_DOWN to 114,
+            RemoteKey.MUTE to 113,
+            RemoteKey.PLAY_PAUSE to 164,
+            RemoteKey.REWIND to 168,
+            RemoteKey.FAST_FORWARD to 208,
+            RemoteKey.INFO to 139
+        )
+
+        for ((key, expectedScan) in expectedScancodes) {
+            val scancode = when (key) {
+                RemoteKey.POWER -> 116
+                RemoteKey.HOME -> 172
+                RemoteKey.BACK -> 158
+                RemoteKey.UP -> 103
+                RemoteKey.DOWN -> 108
+                RemoteKey.LEFT -> 105
+                RemoteKey.RIGHT -> 106
+                RemoteKey.SELECT -> 96
+                RemoteKey.VOLUME_UP -> 115
+                RemoteKey.VOLUME_DOWN -> 114
+                RemoteKey.MUTE -> 113
+                RemoteKey.PLAY_PAUSE -> 164
+                RemoteKey.REWIND -> 168
+                RemoteKey.FAST_FORWARD -> 208
+                RemoteKey.INFO -> 139
+            }
+            assertEquals("Fire TV scancode for ${key.name} must be $expectedScan", expectedScan, scancode)
         }
     }
 
