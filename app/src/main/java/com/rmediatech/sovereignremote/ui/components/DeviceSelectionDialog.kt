@@ -80,7 +80,7 @@ fun DeviceSelectionDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -92,6 +92,22 @@ fun DeviceSelectionDialog(
                             CircularProgressIndicator(modifier = Modifier.size(12.dp), color = palette.primaryAccent, strokeWidth = 1.5.dp)
                         }
                     }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.primaryAccent.copy(alpha = 0.08f))
+                        .border(1.dp, palette.primaryAccent.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "💡 First time? Check your TV screen and select 'Always Allow' to pair.",
+                        fontSize = 10.sp,
+                        color = palette.primaryAccent
+                    )
                 }
 
                 if (visibleActive.isEmpty()) {

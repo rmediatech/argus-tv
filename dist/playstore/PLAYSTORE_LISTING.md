@@ -23,14 +23,18 @@ Meet Argus — a fun, delightfully convenient, and 100% FREE universal smart TV 
 🎉 WHY YOU'LL LOVE ARGUS:
 • 100% Free Forever: No paywalls, no subscriptions, no locked buttons.
 • Zero Ads: No video popups interrupting your favorite movie. Ever.
-• Instant Convenience: Auto-discovers TVs on your Wi-Fi in seconds — zero account logins or tedious pairing steps.
+• Instant Wi-Fi Auto-Discovery: Detects smart TVs on your local network in seconds with zero account signups.
 • Tactile & Fun: High-frequency haptic vibration feedback on every button press with sleek AMOLED dark tactical themes and glowing cyan accents.
 
 📺 WORKS WITH POPULAR SMART TVS & STREAMING DEVICES:
 • Roku TV & Roku Streaming Sticks (TCL, Hisense, Onn, Sharp, Philips)
 • Android TV & Google TV devices (Sony, Chromecast, NVIDIA Shield)
 • Fire TV & smart media displays
+• Samsung Tizen & LG webOS Smart TVs
 • Wake-on-LAN (WoL): Power on supported sleeping TVs directly over Wi-Fi!
+
+💡 QUICK 1-STEP FIRST-TIME SETUP:
+To keep your smart TV secure, your TV operating system (Fire TV, Google TV, Samsung, or LG) displays a one-time permission popup on your TV screen the very first time Argus connects. Simply look up at your TV and select "Always Allow" or "Accept" using your TV's physical buttons or remote. Once allowed, Argus connects automatically every time! (Roku TVs connect instantly with zero prompts).
 
 🎮 ALL THE ESSENTIAL CONTROLS:
 • Smooth Directional D-Pad (Up, Down, Left, Right, Select/OK)

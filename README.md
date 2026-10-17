@@ -9,7 +9,7 @@
 
 ## 🌟 Overview
 
-**Argus** (named after *Argus Panoptes*, the all-seeing guardian of classical Greek lore) is a sleek, lightweight, tactical native Android remote controller built for smart TVs and network media players (Google TV, Android TV, Fire TV, Roku, Smart TVs, and Wake-on-LAN hosts). 
+**Argus** (named after *Argus Panoptes*, the all-seeing guardian of classical Greek lore) is a sleek, lightweight, tactical native Android remote controller built for smart TVs and network media players (Google TV, Android TV, Fire TV, Roku, Samsung Tizen, LG webOS, Sony BRAVIA, Vizio SmartCast, and Wake-on-LAN hosts). 
 
 Unlike commercial remote apps from the Google Play Store that demand account logins, track your viewing history, and bombard you with advertisements, Argus communicates **directly with your TV over your local home Wi-Fi network**.
 
@@ -17,17 +17,34 @@ Unlike commercial remote apps from the Google Play Store that demand account log
 
 ## 🚀 Key Features
 
-* **⚡ Ultra-Low Latency:** Sends local HTTP/REST commands directly to your TV in microseconds without touching the public internet.
-* **🔍 Auto-Discovery (SSDP):** Automatically scans your Wi-Fi subnet using UDP multicast (`239.255.255.250:1900`) and connects to your TV on launch.
+* **⚡ Ultra-Low Latency:** Sends local commands directly to your TV in microseconds without touching the public internet.
+* **🔍 Auto-Discovery (SSDP & ARP):** Automatically scans your Wi-Fi subnet using UDP multicast (`239.255.255.250:1900`) and TCP protocol probing.
 * **🎯 Manual IP Override:** Supports direct IP entry if your Wi-Fi router blocks multicast/broadcast packets between client devices.
 * **🎛️ Full Tactical D-Pad & Controls:**
-  * Power On/Off
+  * Power On/Off (with Wake-on-LAN fallback)
   * Directional D-Pad (Up, Down, Left, Right, Select/OK)
   * Volume Up, Volume Down, Instant Mute
-  * Back, Home, and Asterisk (*) Options
+  * Back, Home, and Options / Quick Settings keys
   * Play, Pause, Rewind, Fast-Forward
 * **📳 Haptic Feedback:** High-frequency tactile vibration on every button press for physical remote tactile feel.
-* **🖤 Pure Dark Tactical Theme:** AMOLED-optimized deep black (`#090D16`) with electric cyan (`#00E5FF`) and tactical crimson (`#FF1744`) accents.
+* **🖤 Pure Dark Tactical Theme:** AMOLED-optimized deep black with electric cyan and tactical accents.
+* **🗑️ Sovereign Device Governance:** Red trashcan to permanently forget unwanted network devices, plus an eye toggle to hide/unhide TVs.
+
+---
+
+## 📺 First-Time Smart TV Pairing Guide (By Brand)
+
+To protect your privacy and TV security, modern smart TV operating systems require a **one-time physical authorization** when a new remote app connects over Wi-Fi. Once allowed, Argus reconnects automatically with zero prompts:
+
+| TV Platform / Brand | Port | First-Time TV Screen Prompt | Action Required |
+| :--- | :--- | :--- | :--- |
+| **Amazon Fire TV** | `5555` | *"Allow USB debugging? RSA fingerprint: ... [✓] Always allow"* | Check **"Always allow"** and click **OK** with your TV remote. |
+| **Google TV / Android TV** | `5555` / `8008` | *"Allow USB debugging? [✓] Always allow"* | Check **"Always allow"** and click **OK**. (Port 8008 DIAL fallback). |
+| **Roku TV & Streaming Sticks** | `8060` | *None (Instant Connect)* | Zero prompts needed. Connects instantly over local ECP. |
+| **Samsung Smart TV (Tizen)** | `8001` / `8002` | *"Allow ArgusRemote to control this TV? [Allow / Deny]"* | Click **Allow** using your TV's physical buttons or remote. |
+| **LG webOS TV** | `3000` / `3001` | *"com.rmediatech.sovereignremote requests permission [Accept]"* | Click **Accept** on the TV screen. |
+| **Sony BRAVIA** | `80` / `20060` | Direct IRCC SOAP API | Pre-shared key or instant IRCC command execution. |
+| **Vizio SmartCast** | `7345` / `9000` | HTTPS Direct API | Connects over local SSL socket. |
 
 ---
 
@@ -64,10 +81,7 @@ make logs
 1. On your Android phone, go to **Settings $\to$ About Phone** and tap **Build Number** 7 times to enable **Developer Options**.
 2. Go to **Settings $\to$ System $\to$ Developer Options** and enable **USB Debugging**.
 3. Plug your phone into your computer with a USB cable.
-4. Run:
-   ```bash
-   make devices
-   ```
+4. Run `make devices`.
 5. Tap **"Allow USB Debugging"** on your phone's screen.
 6. Run `make run` — the app builds, installs, and launches automatically!
 
@@ -86,17 +100,37 @@ make logs
 
 ## 🏛️ Architecture
 
+Argus adheres strictly to the Sovereign Engineering Standard: single-responsibility modularity, zero monolithic sprawl, and zero public cloud dependencies.
+
 ```
 app/src/main/java/com/rmediatech/sovereignremote/
-├── MainActivity.kt                # Single-activity Compose entry point
+├── MainActivity.kt                # Thin lifecycle shell (<= 80 lines)
 ├── model/
-│   └── RemoteDevice.kt            # Device and RemoteKey models
+│   └── RemoteDevice.kt            # Immutable device models, RemoteKey & liveness enums
+├── net/
+│   ├── NetworkEnvironmentManager.kt # Dynamic CIDR, active subnet resolution & hardware ID
+│   └── WakeOnLan.kt              # Kernel ARP cache parser & magic packet broadcaster
 ├── discovery/
-│   └── SsdpScanner.kt             # UDP SSDP multicast discovery engine
+│   ├── UniversalTvScanner.kt      # Parallel SSDP multicast, ARP cache & TCP sweep engine
+│   └── SmartTvClassifier.kt       # IEEE MAC OUI and deep port heuristic classifier
 ├── protocols/
-│   └── RokuClient.kt              # Local ECP HTTP command dispatcher
+│   ├── TvProtocolRegistry.kt      # Agnostic protocol router with auto-promotion
+│   ├── FireTvProtocol.kt          # Persistent Toybox stream (<1ms) & ADB fallback
+│   ├── GoogleTvProtocol.kt        # Direct ADB keyevent + DIAL app launcher
+│   ├── RokuProtocol.kt            # Local ECP HTTP/REST wire dispatcher
+│   ├── SamsungProtocol.kt         # Tizen WebSocket JSON frame engine
+│   ├── LgWebOsProtocol.kt         # webOS SSAP WebSocket handshake & key dispatcher
+│   ├── SonyBraviaProtocol.kt      # SOAP IRCC XML envelope dispatcher
+│   └── VizioSmartCastProtocol.kt  # SmartCast HTTPS command dispatcher
+├── state/
+│   ├── ArgusSessionState.kt       # Multi-network state, device blacklist & liveness tracker
+│   └── DeviceLivenessTracker.kt   # Non-blocking background health probe
 └── ui/
-    ├── theme/                     # Dark tactical typography and colors
+    ├── theme/                     # Tactical dark AMOLED palette & theme presets
     └── components/
-        └── RemoteScreen.kt        # Declarative D-Pad, Volume, and Device Selector
+        ├── RemoteScreen.kt        # Primary remote command surface
+        ├── DeviceSelectionDialog.kt # Scoped network picker, trashcan & hide drawers
+        ├── ControllerLayouts.kt   # Tactical D-Pad, Scandi frosted glass & retro pads
+        ├── DiagnosticLogsDialog.kt # Live forensic audit log viewer
+        └── AboutArgusDialog.kt    # Tactical credentials & pairing guidance
 ```

@@ -65,9 +65,24 @@ fun AboutArgusDialog(
                     fontSize = 13.sp,
                     color = palette.textSecondary
                 )
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = palette.border)
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "FIRST-TIME TV PAIRING",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.textSecondary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "For security, your TV operating system (Fire TV, Google TV, Samsung, or LG) displays a one-time permission popup on your TV screen when connecting for the first time. Select 'Always Allow' or 'Accept' using your TV's physical remote. Roku TVs connect instantly with zero prompts.",
+                    fontSize = 11.sp,
+                    color = palette.textSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = palette.border)
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "DEVELOPER & ARCHITECTURE",
                     fontSize = 10.sp,

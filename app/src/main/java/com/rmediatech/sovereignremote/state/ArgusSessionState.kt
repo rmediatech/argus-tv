@@ -442,10 +442,14 @@ class ArgusSessionState(
                 lastAckLatencyMs = -1L
                 isAckActive = true
                 livenessState = DeviceLivenessState.DISCONNECTED
+                val errMsg = dispatch.error?.message.orEmpty().lowercase()
                 com.rmediatech.sovereignremote.logging.SovereignLogger.w(
                     com.rmediatech.sovereignremote.logging.SovereignLogger.Category.PROTOCOL,
                     "sendKey($key) FAILED on ${device.ipAddress}: ${dispatch.error?.message}"
                 )
+                if (errMsg.contains("unauthorized") || errMsg.contains("permission") || errMsg.contains("denied")) {
+                    Toast.makeText(context, "Pairing needed: Look at your TV screen and select 'Always Allow'", Toast.LENGTH_LONG).show()
+                }
                 scope.launch {
                     delay(800)
                     isAckActive = false
