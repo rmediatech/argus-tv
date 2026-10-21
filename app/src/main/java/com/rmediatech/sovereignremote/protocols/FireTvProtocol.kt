@@ -5,16 +5,11 @@ import android.util.Log
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import com.rmediatech.sovereignremote.net.WakeOnLan
 import dadb.AdbKeyPair
 import dadb.AdbShellStream
 import dadb.Dadb
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.*
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -41,12 +36,11 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         return eventNodeCache.computeIfAbsent(ip) {
             try {
                 val output = dadb.shell("getevent -S").allOutput
-                val deviceBlocks = output.split("add device")
                 var remoteNode: String? = null
                 var kbdNode: String? = null
                 val nodeRegex = Regex("""/dev/input/(event\d+)""")
 
-                for (block in deviceBlocks) {
+                for (block in output.split("add device")) {
                     val nodeMatch = nodeRegex.find(block)?.groupValues?.get(1) ?: continue
                     val lower = block.lowercase()
                     if (lower.contains("amazon fire tv remote") || lower.contains("remote")) {
@@ -56,7 +50,6 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         kbdNode = nodeMatch
                     }
                 }
-
                 val resolved = remoteNode ?: kbdNode ?: "event4"
                 Log.d("FireTvProtocol", "Resolved input event node for $ip: $resolved")
                 resolved
@@ -72,30 +65,23 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         keyDir.mkdirs()
         val privKey = File(keyDir, "adbkey")
         val pubKey = File(keyDir, "adbkey.pub")
-
         if (!privKey.exists() || !pubKey.exists()) {
             AdbKeyPair.generate(privKey, pubKey)
         }
         AdbKeyPair.read(privKey, pubKey)
     }
 
-    private fun getDadb(ip: String, port: Int): Dadb {
-        return dadbCache.computeIfAbsent("$ip:$port") {
-            Dadb.create(ip, port, keyPair)
-        }
-    }
+    private fun getDadb(ip: String, port: Int): Dadb =
+        dadbCache.computeIfAbsent("$ip:$port") { Dadb.create(ip, port, keyPair) }
 
     private fun getOrCreateShellStream(ip: String, port: Int, dadb: Dadb): AdbShellStream? {
         val key = "$ip:$port"
-        val existing = shellStreamCache[key]
-        if (existing != null) return existing
+        shellStreamCache[key]?.let { return it }
         return try {
             val stream = dadb.openShell("")
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    while (isActive) {
-                        stream.read()
-                    }
+                    while (isActive) stream.read()
                 } catch (_: Throwable) {
                     shellStreamCache.remove(key)
                 }
@@ -108,52 +94,23 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         }
     }
 
-    private fun isPortOpen(ip: String, port: Int, timeoutMs: Int): Boolean {
-        return try {
-            Socket().use { s ->
-                s.connect(InetSocketAddress(ip, port), timeoutMs)
-                true
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> = withContext(Dispatchers.IO) {
-        val keycode = when (key) {
-            RemoteKey.POWER -> 26
-            RemoteKey.HOME -> 3
-            RemoteKey.BACK -> 4
-            RemoteKey.UP -> 19
-            RemoteKey.DOWN -> 20
-            RemoteKey.LEFT -> 21
-            RemoteKey.RIGHT -> 22
-            RemoteKey.SELECT -> 23
-            RemoteKey.VOLUME_UP -> 24
-            RemoteKey.VOLUME_DOWN -> 25
-            RemoteKey.MUTE -> 164
-            RemoteKey.PLAY_PAUSE -> 85
-            RemoteKey.REWIND -> 89
-            RemoteKey.FAST_FORWARD -> 90
-            RemoteKey.INFO -> 176 // Android KEYCODE_SETTINGS (Quick Settings / Options on Fire TV)
-        }
-
-        val scancode = when (key) {
-            RemoteKey.POWER -> 116
-            RemoteKey.HOME -> 172
-            RemoteKey.BACK -> 158
-            RemoteKey.UP -> 103
-            RemoteKey.DOWN -> 108
-            RemoteKey.LEFT -> 105
-            RemoteKey.RIGHT -> 106
-            RemoteKey.SELECT -> 96
-            RemoteKey.VOLUME_UP -> 115
-            RemoteKey.VOLUME_DOWN -> 114
-            RemoteKey.MUTE -> 113
-            RemoteKey.PLAY_PAUSE -> 164
-            RemoteKey.REWIND -> 168
-            RemoteKey.FAST_FORWARD -> 208
-            RemoteKey.INFO -> 139
+        val (keycode, scancode) = when (key) {
+            RemoteKey.POWER -> 26 to 116
+            RemoteKey.HOME -> 3 to 172
+            RemoteKey.BACK -> 4 to 158
+            RemoteKey.UP -> 19 to 103
+            RemoteKey.DOWN -> 20 to 108
+            RemoteKey.LEFT -> 21 to 105
+            RemoteKey.RIGHT -> 22 to 106
+            RemoteKey.SELECT -> 23 to 96
+            RemoteKey.VOLUME_UP -> 24 to 115
+            RemoteKey.VOLUME_DOWN -> 25 to 114
+            RemoteKey.MUTE -> 164 to 113
+            RemoteKey.PLAY_PAUSE -> 85 to 164
+            RemoteKey.REWIND -> 89 to 168
+            RemoteKey.FAST_FORWARD -> 90 to 208
+            RemoteKey.INFO -> 176 to 139 // Android KEYCODE_SETTINGS (Quick Settings / Options on Fire TV)
         }
 
         for (attempt in 1..2) {
@@ -176,24 +133,16 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                     } catch (_: Exception) {}
 
                     if (isAsleep) {
-                        val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
+                        val mac = device.macAddress ?: WakeOnLan.getMacFromArp(device.ipAddress)
                         if (!mac.isNullOrBlank()) {
-                            Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} is sleeping. Broadcasting instant WoL to $mac...")
-                            com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
+                            WakeOnLan.wake(mac, device.ipAddress, context)
                         }
-
-                        try {
-                            dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
-                        } catch (_: Exception) {}
-
+                        try { dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3") } catch (_: Exception) {}
                         for (wakeAttempt in 1..4) {
                             delay(250)
                             try {
                                 val checkOut = dadb.shell("dumpsys power").allOutput
-                                if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
-                                    Log.i("FireTvProtocol", "Fire TV display awakened via KEYCODE_WAKEUP on attempt $wakeAttempt")
-                                    break
-                                }
+                                if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) break
                             } catch (_: Exception) {}
                         }
                     } else {
@@ -202,48 +151,29 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                     return@withContext Result.success(Unit)
                 }
 
-                // High-throughput fast path via persistent shell stream (<1ms Toybox execution)
                 val stream = getOrCreateShellStream(device.ipAddress, 5555, dadb)
                 if (stream != null) {
                     try {
-                        synchronized(stream) {
-                            stream.write("$fastCmd\n")
-                        }
-                        Log.d("FireTvProtocol", "Piped key $key ($scancode/$keycode) to ${device.ipAddress}")
+                        synchronized(stream) { stream.write("$fastCmd\n") }
                         return@withContext Result.success(Unit)
                     } catch (e: Exception) {
-                        Log.w("FireTvProtocol", "Piped shell write failed, resetting stream & dadb: ${e.message}")
-                        shellStreamCache.remove("${device.ipAddress}:5555")?.let {
-                            try { it.close() } catch (_: Exception) {}
-                        }
+                        shellStreamCache.remove("${device.ipAddress}:5555")?.let { try { it.close() } catch (_: Exception) {} }
                         dadbCache.remove("${device.ipAddress}:5555")
                         if (attempt == 1) continue
                     }
                 }
 
-                // Direct adb execution path
                 dadb.shell(fastCmd)
-                Log.d("FireTvProtocol", "Successfully sent key $key ($scancode/$keycode) to ${device.ipAddress}")
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
-                Log.w("FireTvProtocol", "ADB command attempt $attempt failed on ${device.ipAddress}: ${e.message}")
                 dadbCache.remove("${device.ipAddress}:5555")
-                shellStreamCache.remove("${device.ipAddress}:5555")?.let {
-                    try { it.close() } catch (_: Exception) {}
-                }
-
-                if (attempt == 1) {
-                    continue // Ground-floor self-healing: retry once with fresh socket connection
-                }
+                shellStreamCache.remove("${device.ipAddress}:5555")?.let { try { it.close() } catch (_: Exception) {} }
+                if (attempt == 1) continue
 
                 if (key == RemoteKey.POWER) {
-                    val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
-                    if (!mac.isNullOrBlank()) {
-                        Log.i("FireTvProtocol", "Fire TV ${device.ipAddress} fallback: Broadcasting WoL to $mac...")
-                        com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
-                    }
+                    val mac = device.macAddress ?: WakeOnLan.getMacFromArp(device.ipAddress)
+                    if (!mac.isNullOrBlank()) WakeOnLan.wake(mac, device.ipAddress, context)
                 }
-
                 return@withContext Result.failure(e)
             }
         }
@@ -279,12 +209,10 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
         try {
-            Socket().use { s ->
-                s.connect(InetSocketAddress(host, port), 250)
-            }
+            Socket().use { s -> s.connect(InetSocketAddress(host, port), 250) }
             var model = "Amazon Fire TV"
             var name = "Fire TV Stick"
-            val mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
+            val mac = WakeOnLan.getMacFromArp(host)
 
             try {
                 withTimeout(400) {
@@ -293,9 +221,8 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         val rawModel = quickDadb.shell("getprop ro.product.model").allOutput.trim()
                         if (rawModel.isNotBlank()) {
                             model = when (rawModel) {
-                                "AFTKA002" -> "Fire TV Stick 4K Max"
+                                "AFTKA002", "AFTSSS" -> "Fire TV Stick 4K Max"
                                 "AFTMM" -> "Fire TV Stick 4K"
-                                "AFTSSS" -> "Fire TV Stick 4K Max"
                                 "AFTT", "AFTKM" -> "Fire TV Stick"
                                 "AFTB" -> "Fire TV Cube"
                                 else -> "Fire TV ($rawModel)"
@@ -323,7 +250,5 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         }
     }
 
-    override suspend fun probeSsdp(host: String, port: Int, ssdpPayload: String): RemoteDevice? {
-        return probe(host, 5555)
-    }
+    override suspend fun probeSsdp(host: String, port: Int, ssdpPayload: String): RemoteDevice? = probe(host, 5555)
 }

@@ -12,12 +12,7 @@ import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.net.SocketTimeoutException
+import java.net.*
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -42,7 +37,6 @@ class UniversalTvScanner(
         val foundDevices = ConcurrentHashMap<String, RemoteDevice>()
         val arpMappings = WakeOnLan.getAllArpMappings()
 
-        // 1. Resolve active network subnet environment
         val activeSubnetInfo = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         val currentNetId = activeSubnetInfo?.networkId
         val currentSubnet = activeSubnetInfo?.subnetPrefix
@@ -50,7 +44,6 @@ class UniversalTvScanner(
         val candidateIps = NetworkEnvironmentManager.generateCandidateIps(activeSubnetInfo).toMutableSet()
         candidateIps.addAll(arpMappings.keys)
 
-        // Prioritize hosts in kernel ARP cache (instant 0ms response probability)
         val activeArpIps = arpMappings.keys.filter { ip ->
             currentSubnet == null || NetworkEnvironmentManager.matchesSubnet(ip, currentSubnet)
         }
@@ -65,14 +58,10 @@ class UniversalTvScanner(
             "Scan initiated: activeNetId=$currentNetId, subnet=$currentSubnet, candidates=${sortedCandidates.size}, timeout=${timeoutMs}ms"
         )
 
-        // 2. Bound entire scan execution to strict timeout with coroutineScope
-        // When timeoutMs fires, withTimeoutOrNull cancels coroutineScope and ALL child jobs immediately!
         withTimeoutOrNull(timeoutMs.toLong()) {
             coroutineScope {
                 fun recordDevice(device: RemoteDevice) {
-                    if (!gwIp.isNullOrBlank() && device.ipAddress == gwIp) {
-                        return // Gateway router is never a TV
-                    }
+                    if (!gwIp.isNullOrBlank() && device.ipAddress == gwIp) return
                     val mac = if (device.macAddress.isNullOrBlank()) {
                         arpMappings[device.ipAddress] ?: WakeOnLan.getMacFromArp(device.ipAddress)
                     } else device.macAddress
@@ -90,7 +79,7 @@ class UniversalTvScanner(
                     } else device.copy(macAddress = mac)
 
                     val existing = foundDevices[effectiveDevice.ipAddress]
-                    val shouldUpdate = existing == null || 
+                    val shouldUpdate = existing == null ||
                         (existing.deviceType == DeviceType.GENERIC && effectiveDevice.deviceType != DeviceType.GENERIC) ||
                         (existing.port != 5555 && effectiveDevice.port == 5555)
                     if (shouldUpdate) {
@@ -110,7 +99,6 @@ class UniversalTvScanner(
                         )
                         onDeviceFound?.invoke(enriched)
 
-                        // If device is still GENERIC, asynchronously bombard host across all protocols
                         if (enriched.deviceType == DeviceType.GENERIC) {
                             launch {
                                 val deep = SmartTvClassifier.deepInquireHost(enriched.ipAddress, enriched.macAddress, enriched.port, registry)
@@ -122,7 +110,6 @@ class UniversalTvScanner(
                     }
                 }
 
-                // Fast-path ARP brand scout: if ARP cache reveals known TV vendor OUI, probe immediately
                 activeArpIps.forEach { ip ->
                     val mac = arpMappings[ip]
                     val brand = SmartTvClassifier.inferBrandFromMac(mac)
@@ -134,7 +121,6 @@ class UniversalTvScanner(
                     }
                 }
 
-                // High-speed Multi-Target SSDP Multicast & Subnet Broadcast
                 launch {
                     discoverSsdp(
                         timeoutMs = (timeoutMs * 0.85).toInt(),
@@ -143,7 +129,6 @@ class UniversalTvScanner(
                     )
                 }
 
-                // Dynamic candidate port sweep across ports registered by protocol registry
                 val candidatePorts = registry.getAllCandidatePorts()
                 val concurrencyLimit = Semaphore(35)
 
@@ -168,10 +153,7 @@ class UniversalTvScanner(
         }
 
         val elapsed = System.currentTimeMillis() - scanStartTime
-        SovereignLogger.i(
-            SovereignLogger.Category.DISCOVERY,
-            "Scan finished in ${elapsed}ms. Total devices discovered: ${foundDevices.size}"
-        )
+        SovereignLogger.i(SovereignLogger.Category.DISCOVERY, "Scan finished in ${elapsed}ms. Total devices discovered: ${foundDevices.size}")
 
         val latestArp = WakeOnLan.getAllArpMappings()
         foundDevices.values.map { dev ->
@@ -183,7 +165,6 @@ class UniversalTvScanner(
         val activeNet = NetworkEnvironmentManager.getActiveSubnetInfo(context)
         val mac = WakeOnLan.getMacFromArp(ip)
 
-        // 1. Sovereign Deep Inquisitor: Bombard host across all protocols (known + unknown)
         val deepResolved = SmartTvClassifier.deepInquireHost(ip, mac, 8008, registry)
         if (deepResolved.deviceType != DeviceType.GENERIC) {
             return@withContext deepResolved.copy(
@@ -192,7 +173,6 @@ class UniversalTvScanner(
             )
         }
 
-        // 2. Open port sweep & protocol confirmation
         val openPorts = registry.getAllCandidatePorts().filter { isPortReachable(ip, it, 200) }
         if (openPorts.isNotEmpty()) {
             SmartTvClassifier.probeAndConfirm(ip, openPorts, registry)?.let { classified ->
@@ -204,10 +184,7 @@ class UniversalTvScanner(
             }
         }
 
-        deepResolved.copy(
-            subnetPrefix = activeNet?.subnetPrefix,
-            networkId = activeNet?.networkId
-        )
+        deepResolved.copy(subnetPrefix = activeNet?.subnetPrefix, networkId = activeNet?.networkId)
     }
 
     private fun isPortReachable(ip: String, port: Int, timeoutMs: Int): Boolean = try {
@@ -227,13 +204,11 @@ class UniversalTvScanner(
                 acquire()
             }
 
-            val socket = DatagramSocket()
-            socket.broadcast = true
-            socket.soTimeout = 400
-
-            coroutineContext.job.invokeOnCompletion {
-                try { socket.close() } catch (_: Exception) {}
+            val socket = DatagramSocket().apply {
+                broadcast = true
+                soTimeout = 400
             }
+            coroutineContext.job.invokeOnCompletion { try { socket.close() } catch (_: Exception) {} }
 
             try {
                 val targets = mutableListOf<InetAddress>()
@@ -242,19 +217,15 @@ class UniversalTvScanner(
                     try { targets.add(InetAddress.getByName(broadcastIp)) } catch (_: Exception) {}
                 }
 
-                // Gather SSDP search targets dynamically from registry
                 val stQueries = registry.getAllSsdpSearchTargets().ifEmpty {
                     listOf("ssdp:all", "urn:dial-multiscreen-org:service:dial:1", "roku:ecp")
                 }
 
-                // Transmit SSDP search requests
                 for (st in stQueries) {
-                    val query = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: $st\r\nMX: 2\r\n\r\n"
-                    val bytes = query.toByteArray(Charsets.UTF_8)
+                    val bytes = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: $st\r\nMX: 2\r\n\r\n".toByteArray(Charsets.UTF_8)
                     for (target in targets) {
                         try {
-                            val packet = DatagramPacket(bytes, bytes.size, target, 1900)
-                            socket.send(packet)
+                            socket.send(DatagramPacket(bytes, bytes.size, target, 1900))
                         } catch (e: Exception) {
                             Log.w(TAG, "SSDP transmission failed to $target: ${e.message}")
                         }
@@ -271,27 +242,21 @@ class UniversalTvScanner(
                         val ip = responsePacket.address.hostAddress ?: continue
                         val responseStr = String(responsePacket.data, 0, responsePacket.length, Charsets.UTF_8)
 
-                        // Seamlessly harvest gateway router hardware UUID to partition networks
                         if (responseStr.contains("InternetGatewayDevice", ignoreCase = true) ||
                             responseStr.contains("WANConnectionDevice", ignoreCase = true) ||
                             responseStr.contains("WANDevice", ignoreCase = true) ||
                             ip.endsWith(".1")
                         ) {
-                            val uuidMatch = Regex("""uuid:([a-f0-9-]+)""", RegexOption.IGNORE_CASE).find(responseStr)
-                            val uuid = uuidMatch?.groupValues?.get(1)
+                            val uuid = Regex("""uuid:([a-f0-9-]+)""", RegexOption.IGNORE_CASE).find(responseStr)?.groupValues?.get(1)
                             if (!uuid.isNullOrBlank()) {
                                 NetworkEnvironmentManager.recordGatewayHardwareId(context, ip, uuid)
                             }
                         }
 
                         launch {
-                            val dev = registry.dispatchSsdp(ip, 8008, responseStr)
-                            if (dev != null) {
-                                onDeviceDiscovered(dev)
-                            }
+                            registry.dispatchSsdp(ip, 8008, responseStr)?.let { onDeviceDiscovered(it) }
                         }
                     } catch (_: SocketTimeoutException) {
-                        // Socket read timed out, continue receiving until overall deadline
                     } catch (e: Exception) {
                         Log.w(TAG, "SSDP receive loop error: ${e.message}")
                         break
