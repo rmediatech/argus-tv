@@ -1,5 +1,13 @@
 # 📱 Argus — Zero-Cloud Smart TV & Media Controller
 
+<div align="center">
+
+[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.0.0)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.0.0/argus-v1.0.0.apk)
+[![RMediaTech Official](https://img.shields.io/badge/RMediaTech-Official%20Fleet-FFB300?style=for-the-badge&logo=shield&logoColor=black)](https://rmediatech.com)
+[![Zero Ads](https://img.shields.io/badge/Zero--Ads-100%25%20Private-00F5FF?style=for-the-badge)](https://rmediatech.com)
+
+</div>
+
 > **Platform:** 100% Native Android (Kotlin + Jetpack Compose)  
 > **Privacy Invariant:** Zero Cloud, Zero Tracking, Zero Ads. All commands execute locally on your LAN.  
 > **Latency:** $<5\text{ ms}$ direct microsecond response over local Wi-Fi.  
