@@ -90,7 +90,70 @@ Output:
 
 ---
 
-## 🛡️ 3. Security & Resilience Invariants
+## 📊 3. Real-World Output & What to Expect (Generic & Sanitized)
+
+The Argus Cinema Engine renders consistent, clean telemetry across any smart TV model or brand. Below is what operators see on their device screen during typical real-world use cases:
+
+### Scenario A: Idle / App Launcher (No Video Playing)
+When your TV is sitting on the home screen or app launcher:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ SOVEREIGN CINEMA & WATCH PARTY          Quick Steps ℹ️ │
+├────────────────────────────────────────────────────────┤
+│ Living Room TV • IDLE                                  │
+│ Ready to beam or track playback                        │
+├────────────────────────────────────────────────────────┤
+│ BEAM MOVIE SEARCH OR YOUTUBE URL                       │
+│ [ e.g. Stephen King Needful Things or URL            ] │
+│ [              BEAM STRAIGHT TO TV                   ] │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Scenario B: Active Movie Stream (Hardware Clocks Engaged)
+Once a stream starts playing on YouTube, Netflix, Prime Video, or a local media player:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ SOVEREIGN CINEMA & WATCH PARTY          Quick Steps ℹ️ │
+├────────────────────────────────────────────────────────┤
+│ YouTube • PLAYING                                      │
+│ Stephen King's Needful Things (1993) [Full Movie]      │
+│ Hardware Playhead: 01:23:36 (5016278 ms)               │
+├────────────────────────────────────────────────────────┤
+│ BEAM MOVIE SEARCH OR YOUTUBE URL                       │
+│ [ Stephen King Needful Things                        ] │
+│ [              BEAM STRAIGHT TO TV                   ] │
+└────────────────────────────────────────────────────────┘
+```
+* **Hardware Playhead**: Automatically increments in 1-second ticks locally without querying the network on every second, preserving phone battery and Wi-Fi bandwidth.
+
+---
+
+### Scenario C: Multi-Room Watch Party Active (Multi-TV Lockstep)
+When you have synced additional displays in your home:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ MULTI-TV WATCH PARTY SYNC (PLAY/PAUSE LOCKSTEP)        │
+├────────────────────────────────────────────────────────┤
+│ Bedroom TV                                             │
+│ 192.168.1.102 • PLAYING (01:23:36)            [SYNCED] │
+├────────────────────────────────────────────────────────┤
+│ Kitchen Smart Display                                  │
+│ 192.168.1.103 • PLAYING (01:23:35)            [SYNCED] │
+├────────────────────────────────────────────────────────┤
+│ Basement Projector                                     │
+│ 192.168.1.104                             [TAP TO SYNC]│
+└────────────────────────────────────────────────────────┘
+```
+* **Lockstep Latency**: Play/pause signals are dispatched concurrently across local TCP sockets with sub-5ms delta, ensuring audio in adjacent rooms does not produce noticeable echo.
+
+---
+
+## 🛡️ 4. Security & Resilience Invariants
 
 1. **Zero DRM Surface Interference**: Never touches, scrapes, or captures encrypted video memory surfaces (HDCP/Widevine protected buffers). All telemetry is derived strictly from public OS session state descriptors.
 2. **Formula Injection Neutralization**: All title strings and metadata queries are sanitized with single-quote escaping (`'`) before display or export to prevent CSV/spreadsheet formula execution.
