@@ -37,8 +37,9 @@ Unlike commercial remote apps from the Google Play Store that demand account log
   * Play, Pause, Rewind, Fast-Forward
 * **🎬 Sovereign Cinema Beam & Now Playing:**
   * Real-time non-DRM hardware playback observation and timecode playhead calculation.
-  * Interactive Cinema Beam dialog for live watch-session tracking and subtitle sync.
+  * Interactive Cinema Beam dialog for live watch-session tracking, URL beam, and multi-room sync.
   * Dedicated interactive volume and playback scrub HUD bar.
+  * Complete instructions in [docs/CINEMA_WATCH_PARTY.md](docs/CINEMA_WATCH_PARTY.md).
 * **📳 Haptic Feedback:** High-frequency tactile vibration on every button press for physical remote tactile feel.
 * **🖤 Pure Dark Tactical Theme:** AMOLED-optimized deep black with electric cyan and tactical accents.
 * **🗑️ Sovereign Device Governance:** Red trashcan to permanently forget unwanted network devices, plus an eye toggle to hide/unhide TVs.

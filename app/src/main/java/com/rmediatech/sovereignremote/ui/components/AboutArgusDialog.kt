@@ -54,7 +54,7 @@ fun AboutArgusDialog(
         text = {
             Column {
                 Text(
-                    text = "Argus Sovereign Remote v1.0.0",
+                    text = "Argus Sovereign Remote v1.1.0",
                     fontWeight = FontWeight.Bold,
                     color = palette.primaryAccent,
                     fontSize = 14.sp

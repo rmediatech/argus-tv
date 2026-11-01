@@ -39,6 +39,7 @@ fun CinemaBeamDialog(
 ) {
     val palette = LocalThemePalette.current
     var queryText by remember { mutableStateOf("") }
+    var showGuide by remember { mutableStateOf(false) }
     var tickMs by remember { mutableStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(nowPlaying) {
@@ -58,12 +59,56 @@ fun CinemaBeamDialog(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = "SOVEREIGN CINEMA & WATCH PARTY",
-                color = palette.primaryAccent,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "SOVEREIGN CINEMA & WATCH PARTY",
+                    color = palette.primaryAccent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (showGuide) "Hide Steps" else "Quick Steps ℹ️",
+                    color = palette.textSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { showGuide = !showGuide }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+
+            if (showGuide) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(palette.surfaceElevated)
+                        .border(1.dp, palette.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "1. Beam: Type title or paste URL below to launch on TV instantly (no D-pad typing).",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        text = "2. Multi-TV Sync: Tap other TVs in your home to lockstep Play/Pause in unison.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        text = "3. Subtitles & CLI: Use 'argus cinema --srt movie.srt' on PC for live script sync.",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            }
 
             // 1. LIVE NOW-PLAYING TELEMETRY CARD
             Column(
