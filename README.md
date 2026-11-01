@@ -46,6 +46,45 @@ Unlike commercial remote apps from the Google Play Store that demand account log
 
 ---
 
+## 🎬 Sovereign Cinema Beam & Multi-Room Watch Party
+
+Argus v1.1.0 introduces the **Sovereign Cinema Engine** — direct hardware playback observation, mobile-to-TV keyboard beaming, and zero-cloud multi-TV watch party lockstep synchronization:
+
+```text
+┌────────────────────────────────────────────────────────┐
+│ SOVEREIGN CINEMA & WATCH PARTY          Quick Steps ℹ️ │
+├────────────────────────────────────────────────────────┤
+│ YouTube • PLAYING                                      │
+│ Stephen King's Needful Things (1993) [Full Movie]      │
+│ Hardware Playhead: 01:23:36 (5016278 ms)               │
+├────────────────────────────────────────────────────────┤
+│ BEAM MOVIE SEARCH OR YOUTUBE URL                       │
+│ [ Stephen King Needful Things                        ] │
+│ [              BEAM STRAIGHT TO TV                   ] │
+├────────────────────────────────────────────────────────┤
+│ MULTI-TV WATCH PARTY SYNC (PLAY/PAUSE LOCKSTEP)        │
+│ • Bedroom TV (192.168.1.102)                  [SYNCED] │
+│ • Kitchen Display (192.168.1.103)             [SYNCED] │
+└────────────────────────────────────────────────────────┘
+```
+
+### 1. Direct Movie Search & URL Beaming (No D-Pad Pecking)
+1. Tap the **`🎬`** pill right above the playback transport buttons.
+2. In the beam box, type a title (e.g. `Needful Things 1993`) or paste any direct YouTube / media URL from your phone clipboard.
+3. Tap **"Beam Straight to TV"** — Argus launches the media app and fires the query in milliseconds, bypassing tedious TV on-screen keyboards.
+
+### 2. Multi-Room Watch Party Sync (Lockstep Play/Pause)
+1. Open the Cinema dialog on your active "Master" TV.
+2. Under **MULTI-TV WATCH PARTY SYNC**, tap any follower TV on your home network to mark it **`SYNCED`**.
+3. Pressing **Play** or **Pause** on your Argus remote immediately coordinates all synced TVs in unison with sub-5ms local TCP dispatch, eliminating echo between rooms.
+
+### 3. Non-DRM Hardware Playhead Telemetry
+* Directly calculates millisecond playheads from OS kernel wake clocks without touching protected DRM video surfaces.
+* Pairs seamlessly with the Rust workstation companion: `argus cinema --srt movie.srt` for live desktop scene dialogue tracking.
+* See the full specification in [docs/CINEMA_WATCH_PARTY.md](docs/CINEMA_WATCH_PARTY.md).
+
+---
+
 ## 📺 First-Time Smart TV Pairing Guide (By Brand)
 
 To protect your privacy and TV security, modern smart TV operating systems require a **one-time physical authorization** when a new remote app connects over Wi-Fi. Once allowed, Argus reconnects automatically with zero prompts:
