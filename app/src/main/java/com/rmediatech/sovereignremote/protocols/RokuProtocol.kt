@@ -1,6 +1,7 @@
 package com.rmediatech.sovereignremote.protocols
 
 import com.rmediatech.sovereignremote.model.DeviceType
+import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,19 @@ class RokuProtocol : SmartTvProtocol {
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun queryNowPlaying(device: RemoteDevice): NowPlayingState? = withContext(Dispatchers.IO) {
+        try {
+            val playerReq = Request.Builder().url("${device.httpBaseUrl}/query/media-player").get().build()
+            val appReq = Request.Builder().url("${device.httpBaseUrl}/query/active-app").get().build()
+            val playerXml = client.newCall(playerReq).execute().use { if (it.isSuccessful) it.body?.string().orEmpty() else "" }
+            val appXml = client.newCall(appReq).execute().use { if (it.isSuccessful) it.body?.string().orEmpty() else "" }
+            if (playerXml.isBlank() && appXml.isBlank()) null
+            else TvMediaBridge.parseRokuMediaPlayer(playerXml, appXml)
+        } catch (_: Exception) {
+            null
         }
     }
 

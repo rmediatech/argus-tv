@@ -3,6 +3,7 @@ package com.rmediatech.sovereignremote.protocols
 import android.content.Context
 import android.util.Log
 import com.rmediatech.sovereignremote.model.DeviceType
+import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import dadb.AdbKeyPair
@@ -93,9 +94,6 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         pwrState.contains("Display Power: state=OFF") ||
                         pwrState.contains("mHoldingDisplaySuspendBlocker=false")
 
-                    dadb.shell("input keyevent $keycode")
-                    Log.d("GoogleTvProtocol", "Sent ADB POWER keyevent $keycode to ${device.ipAddress}")
-
                     if (isAsleep) {
                         val mac = device.macAddress ?: com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(device.ipAddress)
                         if (!mac.isNullOrBlank()) {
@@ -105,7 +103,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         for (attempt in 1..4) {
                             delay(250)
                             try {
-                                dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
+                                dadb.shell("input keyevent 224; svc power stayon true 2>/dev/null || true; sleep 0.1; input keyevent 3")
                                 val checkOut = dadb.shell("dumpsys power").allOutput
                                 if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
                                     Log.i("GoogleTvProtocol", "TV screen awakened via ADB KEYCODE_WAKEUP on attempt $attempt")
@@ -113,6 +111,10 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                                 }
                             } catch (_: Exception) {}
                         }
+                    } else {
+                        try { dadb.shell("svc power stayon false 2>/dev/null || true") } catch (_: Exception) {}
+                        dadb.shell("input keyevent $keycode")
+                        Log.d("GoogleTvProtocol", "Sent ADB POWER keyevent $keycode to ${device.ipAddress}")
                     }
                 } else {
                     dadb.shell("input keyevent $keycode")
@@ -138,6 +140,9 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            if (isPortOpen(device.ipAddress, 5555, 200)) {
+                try { getDadb(device.ipAddress, 5555).shell("input keyevent 224") } catch (_: Exception) {}
+            }
             val url = "http://${device.formattedHost}:8008/apps/$appName"
             val request = Request.Builder().url(url).post("".toRequestBody()).build()
             client.newCall(request).execute().use { response ->
@@ -147,6 +152,54 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                     Result.failure(IOException("DIAL Launch failed: ${response.code}"))
                 }
             }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun queryNowPlaying(device: RemoteDevice): NowPlayingState? = withContext(Dispatchers.IO) {
+        if (!isPortOpen(device.ipAddress, 5555, 250)) return@withContext null
+        try {
+            val dadb = getDadb(device.ipAddress, 5555)
+            val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
+            val state = TvMediaBridge.parseAdbMediaSession(dump)
+            if (state != null && !state.isScreenAwake && state.status == com.rmediatech.sovereignremote.model.PlaybackStatus.PLAYING) {
+                try { dadb.shell("input keyevent 224") } catch (_: Exception) {}
+                return@withContext state.copy(isScreenAwake = true)
+            }
+            state
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> = withContext(Dispatchers.IO) {
+        if (isPortOpen(device.ipAddress, 5555, 250)) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+                val cmd = TvMediaBridge.buildAdbMediaBeamCommand(uriOrQuery, isFireTv = false)
+                dadb.shell(cmd)
+                return@withContext Result.success(Unit)
+            } catch (_: Exception) {}
+        }
+        launchApp(device, "YouTube")
+    }
+
+    override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!isPortOpen(device.ipAddress, 5555, 250)) return@withContext Result.success(Unit)
+        try {
+            getDadb(device.ipAddress, 5555).shell("svc power stayon true 2>/dev/null || true")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun releaseSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!isPortOpen(device.ipAddress, 5555, 250)) return@withContext Result.success(Unit)
+        try {
+            getDadb(device.ipAddress, 5555).shell("svc power stayon false 2>/dev/null || true")
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }

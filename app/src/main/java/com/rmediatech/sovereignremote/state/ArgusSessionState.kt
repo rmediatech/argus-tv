@@ -44,6 +44,7 @@ class ArgusSessionState(
     var livenessState by mutableStateOf(DeviceLivenessState.DISCONNECTED); private set
     var lastAckLatencyMs by mutableStateOf<Long?>(null); private set
     var isAckActive by mutableStateOf(false); private set
+    val mediaCoordinator = ArgusMediaCoordinator(context, scope, registry)
     private var livenessJob: Job? = null
 
     init {
@@ -51,6 +52,7 @@ class ArgusSessionState(
         if (cleaned.size != discoveredDevices.size) { discoveredDevices = cleaned; persistDevices(cleaned) }
         restoreInitialDevice()
         startLivenessMonitoring()
+        mediaCoordinator.startMonitoring({ currentDevice }, { discoveredDevices })
         refreshUnconfiguredDevices()
     }
 
@@ -71,7 +73,6 @@ class ArgusSessionState(
         currentTheme = preset
         prefs.edit().putString("active_theme_preset", preset.id).apply()
     }
-
     fun selectDevice(device: RemoteDevice) {
         currentDevice = device
         SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Device selected: [${device.deviceType}] ${device.name} (${device.ipAddress}:${device.port})")
@@ -252,6 +253,7 @@ class ArgusSessionState(
         }
 
         SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "sendKey($key) -> ${device.name} (${device.ipAddress}:${device.port})")
+        mediaCoordinator.fanoutTransportKeyIfWatchParty(key, device, discoveredDevices)
         scope.launch {
             val dispatch = registry.sendKeyWithAutoPromotion(device, key)
             if (dispatch.isSuccess) {

@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.rmediatech.sovereignremote.model.DeviceLivenessState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import com.rmediatech.sovereignremote.state.ArgusMediaCoordinator
 import com.rmediatech.sovereignremote.ui.components.controllers.*
 import com.rmediatech.sovereignremote.ui.theme.*
 
@@ -41,12 +42,14 @@ fun RemoteScreen(
     onClearOtherNetworks: () -> Unit = {},
     onClearAllDevices: () -> Unit = {},
     onManualIpAdded: (String) -> Unit,
-    onSendKey: (RemoteKey) -> Unit
+    onSendKey: (RemoteKey) -> Unit,
+    mediaCoordinator: ArgusMediaCoordinator? = null
 ) {
     var showThemeDialog by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     var showManualIpDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showCinemaDialog by remember { mutableStateOf(false) }
     var setupGuideDevice by remember { mutableStateOf<RemoteDevice?>(null) }
     val view = LocalView.current
 
@@ -102,8 +105,25 @@ fun RemoteScreen(
 
             // 4. PLAYBACK CONTROLS & VOLUME/MUTE BAR
             PlaybackVolumeBar(
+                nowPlaying = mediaCoordinator?.nowPlaying,
+                watchPartyCount = mediaCoordinator?.watchPartyIps?.size ?: 0,
+                onOpenCinemaDialog = { showCinemaDialog = true },
                 onSendKey = onSendKey,
                 performHaptic = ::performHaptic
+            )
+        }
+
+        // --- CINEMA BEAM & WATCH PARTY MODAL DIALOG ---
+        if (showCinemaDialog) {
+            CinemaBeamDialog(
+                currentDevice = currentDevice,
+                otherDevices = discoveredDevices.filter { it.ipAddress != currentDevice?.ipAddress && !hiddenIps.contains(it.ipAddress) },
+                nowPlaying = mediaCoordinator?.nowPlaying,
+                watchPartyIps = mediaCoordinator?.watchPartyIps ?: emptySet(),
+                followerTelemetry = mediaCoordinator?.followerTelemetry ?: emptyMap(),
+                onToggleWatchPartyDevice = { ip -> mediaCoordinator?.toggleWatchPartyDevice(ip, discoveredDevices) },
+                onBeamMedia = { q -> mediaCoordinator?.beamMediaToTv(currentDevice, q, discoveredDevices) },
+                onDismiss = { showCinemaDialog = false }
             )
         }
 

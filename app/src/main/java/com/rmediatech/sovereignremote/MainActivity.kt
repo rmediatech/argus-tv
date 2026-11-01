@@ -25,6 +25,11 @@ class MainActivity : ComponentActivity() {
         if (::sessionState.isInitialized) sessionState.onResumeNetworkCheck()
     }
 
+    override fun onDestroy() {
+        if (::sessionState.isInitialized) sessionState.mediaCoordinator.releaseActiveSleepGuard()
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -64,7 +69,8 @@ class MainActivity : ComponentActivity() {
                     onClearOtherNetworks = { sessionState.clearOtherNetworks() },
                     onClearAllDevices = { sessionState.clearAllDevices() },
                     onManualIpAdded = { sessionState.addManualIp(it) },
-                    onSendKey = { sessionState.sendKey(it) }
+                    onSendKey = { sessionState.sendKey(it) },
+                    mediaCoordinator = sessionState.mediaCoordinator
                 )
             }
         }

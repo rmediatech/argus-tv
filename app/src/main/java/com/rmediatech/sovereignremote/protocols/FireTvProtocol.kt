@@ -3,6 +3,7 @@ package com.rmediatech.sovereignremote.protocols
 import android.content.Context
 import android.util.Log
 import com.rmediatech.sovereignremote.model.DeviceType
+import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import com.rmediatech.sovereignremote.net.WakeOnLan
@@ -137,7 +138,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         if (!mac.isNullOrBlank()) {
                             WakeOnLan.wake(mac, device.ipAddress, context)
                         }
-                        try { dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3") } catch (_: Exception) {}
+                        try { dadb.shell("input keyevent 224; svc power stayon true 2>/dev/null || true; sleep 0.1; input keyevent 3") } catch (_: Exception) {}
                         for (wakeAttempt in 1..4) {
                             delay(250)
                             try {
@@ -146,6 +147,8 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                             } catch (_: Exception) {}
                         }
                     } else {
+                        // Release stayon guard before putting the TV to sleep
+                        try { dadb.shell("svc power stayon false 2>/dev/null || true") } catch (_: Exception) {}
                         dadb.shell(fastCmd)
                     }
                     return@withContext Result.success(Unit)
@@ -193,14 +196,59 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val dadb = getDadb(device.ipAddress, device.port)
+            val dadb = getDadb(device.ipAddress, 5555)
             val intent = when (appName.lowercase()) {
                 "netflix" -> "com.netflix.ninja/.MainActivity"
-                "youtube" -> "com.amazon.firetv.youtube/com.google.android.apps.youtube.tv.activity.ShellActivity"
+                "youtube" -> "com.amazon.firetv.youtube/dev.cobalt.app.MainActivity"
                 "prime" -> "com.amazon.avod/com.amazon.avod.client.activity.HomeScreenActivity"
                 else -> appName
             }
-            dadb.shell("am start -n $intent")
+            dadb.shell("input keyevent 224; am force-stop com.instagram.airwave 2>/dev/null || true; am start -n $intent")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun queryNowPlaying(device: RemoteDevice): NowPlayingState? = withContext(Dispatchers.IO) {
+        try {
+            val dadb = getDadb(device.ipAddress, 5555)
+            val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
+            val state = TvMediaBridge.parseAdbMediaSession(dump)
+            if (state != null && !state.isScreenAwake && state.status == com.rmediatech.sovereignremote.model.PlaybackStatus.PLAYING) {
+                // Self-heal black screen when audio is actively playing while Display Power is OFF
+                try { dadb.shell("input keyevent 224") } catch (_: Exception) {}
+                return@withContext state.copy(isScreenAwake = true)
+            }
+            state
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val dadb = getDadb(device.ipAddress, 5555)
+            val cmd = TvMediaBridge.buildAdbMediaBeamCommand(uriOrQuery, isFireTv = true)
+            dadb.shell(cmd)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            getDadb(device.ipAddress, 5555).shell("svc power stayon true 2>/dev/null || true")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun releaseSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            getDadb(device.ipAddress, 5555).shell("svc power stayon false 2>/dev/null || true")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

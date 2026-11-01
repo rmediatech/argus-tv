@@ -2,6 +2,7 @@ package com.rmediatech.sovereignremote.protocols
 
 import android.content.Context
 import com.rmediatech.sovereignremote.model.DeviceType
+import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 
@@ -206,6 +207,26 @@ class TvProtocolRegistry(private val context: Context? = null) {
     suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> {
         val protocol = get(device.deviceType)
         return protocol.launchApp(device, appName)
+    }
+
+    suspend fun queryNowPlaying(device: RemoteDevice): NowPlayingState? {
+        val protocol = get(device.deviceType)
+        return protocol.queryNowPlaying(device)
+    }
+
+    suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> {
+        val protocol = get(device.deviceType)
+        return protocol.launchMediaUri(device, uriOrQuery)
+    }
+
+    suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> {
+        val protocol = get(device.deviceType)
+        return protocol.acquireSleepGuard(device)
+    }
+
+    suspend fun releaseSleepGuard(device: RemoteDevice): Result<Unit> {
+        val protocol = get(device.deviceType)
+        return protocol.releaseSleepGuard(device)
     }
 
     fun resetConnections(ip: String? = null) {
