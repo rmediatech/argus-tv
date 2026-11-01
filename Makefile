@@ -27,9 +27,11 @@ help:
 	@echo "  make devices      - List connected ADB devices (USB & Wi-Fi)"
 	@echo "  make clean        - Clean build caches and outputs"
 
+VERSION ?= 1.1.0
+
 deploy-phone:
 	@echo "📲 Deploying release APK to phone via xua bridge (SOP-ANDROID-DEBUG-01)..."
-	@scp dist/release-v1.0.0/argus-v1.0.0.apk xua:/home/rick/downloads/argus-v1.0.0.apk
+	@scp dist/release-v$(VERSION)/argus-v$(VERSION).apk xua:/home/rick/downloads/argus-v$(VERSION).apk
 	@TARGET_DEV=$$(ssh xua "/home/rick/adb-sdk devices | grep -E '^192\.168\.1\.168:[0-9]+[[:space:]]+device' | awk '{print \$$1}' | head -n 1"); \
 	if [ -z "$$TARGET_DEV" ]; then \
 		CONNECT_PORT=$$(ssh xua "/home/rick/adb-sdk mdns services | grep -E 'R5GL1218H5J.*_adb-tls-connect' | grep -oE '192\.168\.1\.168:[0-9]+' | cut -d: -f2 | head -n 1"); \
@@ -41,7 +43,7 @@ deploy-phone:
 	fi; \
 	if [ -n "$$TARGET_DEV" ]; then \
 		echo "Detected active phone: $$TARGET_DEV"; \
-		ssh xua "/home/rick/adb-sdk -s $$TARGET_DEV install -r /home/rick/downloads/argus-v1.0.0.apk"; \
+		ssh xua "/home/rick/adb-sdk -s $$TARGET_DEV install -r /home/rick/downloads/argus-v$(VERSION).apk"; \
 		ssh xua "/home/rick/adb-sdk -s $$TARGET_DEV shell am start -n $(PACKAGE_NAME)/.MainActivity"; \
 		echo "🎉 Argus deployed and launched successfully on phone!"; \
 	else \
@@ -56,16 +58,16 @@ release:
 
 release-sign: release
 	@echo "🔐 Assembling and signing sovereign release distribution (SOVEREIGN-SIGN-01)..."
-	@mkdir -p dist/release-v1.0.0
-	@cp app/build/outputs/bundle/release/app-release.aab dist/release-v1.0.0/argus-v1.0.0.aab
-	@cp app/build/outputs/apk/release/app-release.apk dist/release-v1.0.0/argus-v1.0.0.apk
-	@cd dist/release-v1.0.0 && sha256sum argus-v1.0.0.aab argus-v1.0.0.apk > SHA256SUMS
+	@mkdir -p dist/release-v$(VERSION)
+	@cp app/build/outputs/bundle/release/app-release.aab dist/release-v$(VERSION)/argus-v$(VERSION).aab
+	@cp app/build/outputs/apk/release/app-release.apk dist/release-v$(VERSION)/argus-v$(VERSION).apk
+	@cd dist/release-v$(VERSION) && sha256sum argus-v$(VERSION).aab argus-v$(VERSION).apk > SHA256SUMS
 	@if gpg --list-keys 4E428019A109578B >/dev/null 2>&1; then \
-		gpg --batch --yes --armor --detach-sign --default-key 4E428019A109578B --output dist/release-v1.0.0/SHA256SUMS.asc dist/release-v1.0.0/SHA256SUMS; \
+		gpg --batch --yes --armor --detach-sign --default-key 4E428019A109578B --output dist/release-v$(VERSION)/SHA256SUMS.asc dist/release-v$(VERSION)/SHA256SUMS; \
 		echo "✅ Sovereign detached signature verified:"; \
-		gpg --verify dist/release-v1.0.0/SHA256SUMS.asc dist/release-v1.0.0/SHA256SUMS; \
+		gpg --verify dist/release-v$(VERSION)/SHA256SUMS.asc dist/release-v$(VERSION)/SHA256SUMS; \
 	fi
-	@echo "🎉 Release ready in dist/release-v1.0.0/"
+	@echo "🎉 Release ready in dist/release-v$(VERSION)/"
 	@command -v sovereign-tone >/dev/null 2>&1 && sovereign-tone bottle || true
 
 install:

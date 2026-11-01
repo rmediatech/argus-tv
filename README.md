@@ -2,7 +2,8 @@
 
 <div align="center">
 
-[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.0.0)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.0.0/argus-v1.0.0.apk)
+[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.1.0)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.1.0/argus-v1.1.0.apk)
+[![Version](https://img.shields.io/badge/Version-v1.1.0-blue?style=for-the-badge)](CHANGELOG.md)
 [![RMediaTech Official](https://img.shields.io/badge/RMediaTech-Official%20Fleet-FFB300?style=for-the-badge&logo=shield&logoColor=black)](https://rmediatech.com)
 [![Zero Ads](https://img.shields.io/badge/Zero--Ads-100%25%20Private-00F5FF?style=for-the-badge)](https://rmediatech.com)
 
@@ -34,6 +35,10 @@ Unlike commercial remote apps from the Google Play Store that demand account log
   * Volume Up, Volume Down, Instant Mute
   * Back, Home, and Options / Quick Settings keys
   * Play, Pause, Rewind, Fast-Forward
+* **🎬 Sovereign Cinema Beam & Now Playing:**
+  * Real-time non-DRM hardware playback observation and timecode playhead calculation.
+  * Interactive Cinema Beam dialog for live watch-session tracking and subtitle sync.
+  * Dedicated interactive volume and playback scrub HUD bar.
 * **📳 Haptic Feedback:** High-frequency tactile vibration on every button press for physical remote tactile feel.
 * **🖤 Pure Dark Tactical Theme:** AMOLED-optimized deep black with electric cyan and tactical accents.
 * **🗑️ Sovereign Device Governance:** Red trashcan to permanently forget unwanted network devices, plus an eye toggle to hide/unhide TVs.
@@ -114,7 +119,8 @@ Argus adheres strictly to the Sovereign Engineering Standard: single-responsibil
 app/src/main/java/com/rmediatech/sovereignremote/
 ├── MainActivity.kt                # Thin lifecycle shell (<= 80 lines)
 ├── model/
-│   └── RemoteDevice.kt            # Immutable device models, RemoteKey & liveness enums
+│   ├── RemoteDevice.kt            # Immutable device models, RemoteKey & liveness enums
+│   └── NowPlayingState.kt         # Live playback state, playhead timecodes & media metadata
 ├── net/
 │   ├── NetworkEnvironmentManager.kt # Dynamic CIDR, active subnet resolution & hardware ID
 │   └── WakeOnLan.kt              # Kernel ARP cache parser & magic packet broadcaster
@@ -123,6 +129,7 @@ app/src/main/java/com/rmediatech/sovereignremote/
 │   └── SmartTvClassifier.kt       # IEEE MAC OUI and deep port heuristic classifier
 ├── protocols/
 │   ├── TvProtocolRegistry.kt      # Agnostic protocol router with auto-promotion
+│   ├── TvMediaBridge.kt           # Non-DRM hardware playback observer & playhead calculator
 │   ├── FireTvProtocol.kt          # Persistent Toybox stream (<1ms) & ADB fallback
 │   ├── GoogleTvProtocol.kt        # Direct ADB keyevent + DIAL app launcher
 │   ├── RokuProtocol.kt            # Local ECP HTTP/REST wire dispatcher
@@ -132,11 +139,14 @@ app/src/main/java/com/rmediatech/sovereignremote/
 │   └── VizioSmartCastProtocol.kt  # SmartCast HTTPS command dispatcher
 ├── state/
 │   ├── ArgusSessionState.kt       # Multi-network state, device blacklist & liveness tracker
+│   ├── ArgusMediaCoordinator.kt   # Live media coordinator & playhead updater
 │   └── DeviceLivenessTracker.kt   # Non-blocking background health probe
 └── ui/
     ├── theme/                     # Tactical dark AMOLED palette & theme presets
     └── components/
         ├── RemoteScreen.kt        # Primary remote command surface
+        ├── CinemaBeamDialog.kt    # Sovereign Cinema Beam & live playhead modal
+        ├── PlaybackVolumeBar.kt   # Reactive volume & playback transport bar
         ├── DeviceSelectionDialog.kt # Scoped network picker, trashcan & hide drawers
         ├── ControllerLayouts.kt   # Tactical D-Pad, Scandi frosted glass & retro pads
         ├── DiagnosticLogsDialog.kt # Live forensic audit log viewer
