@@ -9,10 +9,22 @@
 
 </div>
 
+<p align="center">
+  <img src="assets/argus_emblem.svg" alt="Argus Mathematical Emblem" width="180" />
+</p>
+
 > **Platform:** 100% Native Android (Kotlin + Jetpack Compose)  
 > **Privacy Invariant:** Zero Cloud, Zero Tracking, Zero Ads. All commands execute locally on your LAN.  
 > **Latency:** $<5\text{ ms}$ direct microsecond response over local Wi-Fi.  
 > **Developer:** Crafted by RMediaTech ([rmediatech.com](https://rmediatech.com))  
+
+---
+
+## 🏛️ Mythological Lineage & Geometric Rationale
+
+* **The Hundred-Eyed Guardian**: In Hellenic myth, **Argus Panoptes** (*Ἄργος Πανόπτης* — "the all-seeing") was the titan sentinel of Argos with one hundred unblinking eyes. With some eyes resting while the rest watched the horizons, surprise incursions were physically impossible.
+* **Sovereign Architectural Role**: In our mobile and media fleet, **`argus`** oversees smart television hardware and streaming displays with 100% local, peer-to-peer autonomy. It operates silently over your local LAN, discovering media devices via SSDP multicast and ARP sweeps with zero external cloud mediation.
+* **Mathematical Crest Geometry**: Generated purely from mathematical parametric equations on a transparent background, the emblem features 100 all-seeing eyes distributed via a **Fibonacci Phyllotaxis Spiral** ($r = c\sqrt{n}, \theta = n \times 137.507764^\circ$) matching golden-ratio botanical spirals, framed by concentric polar radar range rings ($r = 60, 120, 180, 240, 300$), a $42^\circ$ active radar sweep beam, and a central Panoptes focal core.  
 
 ---
 
