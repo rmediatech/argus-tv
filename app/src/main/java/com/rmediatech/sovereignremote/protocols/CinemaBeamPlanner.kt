@@ -28,10 +28,23 @@ object CinemaBeamPlanner {
         source: CinemaSource = CinemaSource.YOUTUBE,
         client: OkHttpClient = httpClient
     ): String = withContext(Dispatchers.IO) {
-        val trimmed = input.trim().take(256)
-        if (trimmed.isBlank() || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        val raw = input.trim().take(256)
+        if (raw.isBlank()) return@withContext raw
+
+        // Sovereign auto-prefixing for bare domain links
+        val trimmed = if (raw.startsWith("youtu.be/") || raw.startsWith("youtube.com/") || raw.startsWith("www.")) {
+            "https://$raw"
+        } else raw
+
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
             return@withContext trimmed
         }
+
+        // Direct 11-character YouTube video ID optimization (0ms local resolution)
+        if (source == CinemaSource.YOUTUBE && trimmed.matches(Regex("""^[a-zA-Z0-9_-]{11}$"""))) {
+            return@withContext "https://www.youtube.com/watch?v=$trimmed"
+        }
+
         val encoded = URLEncoder.encode(trimmed, "UTF-8")
         when (source) {
             CinemaSource.YOUTUBE -> {
@@ -63,13 +76,21 @@ object CinemaBeamPlanner {
     ): String {
         val trimmed = uriOrQuery.trim().take(256)
         require(trimmed.isNotBlank()) { "Media query or URL cannot be blank" }
-        val safeInput = trimmed.replace(Regex("""['"`$\\;\r\n\t|&<>]"""), "")
+        val rawSafe = trimmed.replace(Regex("""['"`$\\;\r\n\t|&<>]"""), "")
+        val safeInput = if (rawSafe.startsWith("youtu.be/") || rawSafe.startsWith("youtube.com/") || rawSafe.startsWith("www.")) {
+            "https://$rawSafe"
+        } else rawSafe
         val encoded = URLEncoder.encode(safeInput, "UTF-8")
 
         val targetUrl = when (source) {
             CinemaSource.YOUTUBE -> {
-                val base = if (safeInput.startsWith("http://") || safeInput.startsWith("https://")) safeInput
-                else "https://www.youtube.com/results?search_query=$encoded"
+                val base = if (safeInput.startsWith("http://") || safeInput.startsWith("https://")) {
+                    safeInput
+                } else if (safeInput.matches(Regex("""^[a-zA-Z0-9_-]{11}$"""))) {
+                    "https://www.youtube.com/watch?v=$safeInput"
+                } else {
+                    "https://www.youtube.com/results?search_query=$encoded"
+                }
                 if (startOffsetSeconds > 0L && base.contains("watch?v=") && !base.contains("&t=")) {
                     "${base}&t=${startOffsetSeconds}s"
                 } else base
