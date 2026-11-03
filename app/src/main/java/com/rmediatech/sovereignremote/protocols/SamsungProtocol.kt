@@ -55,7 +55,7 @@ class SamsungProtocol(private val client: OkHttpClient? = null) : SmartTvProtoco
     private val activeWebSockets = ConcurrentHashMap<String, WebSocket>()
 
     override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
-        val targetPort = if (port == 8002) 8002 else 8001
+        val targetPort = if (port == 8002 || port == 8001) port else if (port > 0) port else 8001
         val formattedHost = if (host.contains(":") && !host.startsWith("[")) "[$host]" else host
         val url = "http://$formattedHost:$targetPort/api/v2/"
 
