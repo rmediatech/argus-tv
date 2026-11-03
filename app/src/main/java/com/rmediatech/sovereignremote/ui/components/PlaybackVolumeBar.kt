@@ -66,7 +66,7 @@ fun PlaybackVolumeBar(
             val pillTitle = if (nowPlaying != null) {
                 "🎬 ${nowPlaying.title}"
             } else {
-                "🎬 Beam Movie / Watch Party Sync"
+                "🎬 Beam Movie / Watch Party"
             }
             Text(
                 text = pillTitle,
@@ -77,23 +77,31 @@ fun PlaybackVolumeBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            val rightBadge = buildString {
-                if (nowPlaying != null && nowPlaying.positionMs > 0L) {
-                    append(nowPlaying.formattedPlayhead(tickMs))
-                } else if (nowPlaying != null) {
-                    append(nowPlaying.status.label)
-                } else {
-                    append("OPEN")
-                }
-                if (watchPartyCount > 0) append(" • +$watchPartyCount TV")
+            val badgeLabel = if (watchPartyCount > 0) {
+                "🍿 PARTY (${watchPartyCount + 1} TVs)"
+            } else {
+                "🍿 WATCH PARTY"
             }
-            Text(
-                text = rightBadge,
-                color = palette.primaryAccent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 8.dp)
-            )
+            val playheadLabel = if (nowPlaying != null && nowPlaying.positionMs > 0L) {
+                " • ${nowPlaying.formattedPlayhead(tickMs)}"
+            } else ""
+
+            Row(
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.primaryAccent.copy(alpha = 0.2f))
+                    .border(1.dp, palette.primaryAccent.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "$badgeLabel$playheadLabel",
+                    color = palette.primaryAccent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
         // --- PLAYBACK CONTROLS ---
         Row(

@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,9 +37,12 @@ fun CinemaBeamDialog(
     followerTelemetry: Map<String, NowPlayingState> = emptyMap(),
     onToggleWatchPartyDevice: (String) -> Unit,
     onBeamMedia: (String) -> Unit,
+    onScanRequested: () -> Unit = {},
+    onAddManualIp: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val palette = LocalThemePalette.current
+    val scrollState = rememberScrollState()
     var queryText by remember { mutableStateOf("") }
     var showGuide by remember { mutableStateOf(false) }
     var tickMs by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -56,7 +61,8 @@ fun CinemaBeamDialog(
                 .clip(RoundedCornerShape(20.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(20.dp))
-                .padding(20.dp),
+                .padding(20.dp)
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
@@ -64,102 +70,48 @@ fun CinemaBeamDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "SOVEREIGN CINEMA & WATCH PARTY",
-                    color = palette.primaryAccent,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("SOVEREIGN CINEMA & WATCH PARTY", color = palette.primaryAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text(
                     text = if (showGuide) "Hide Steps" else "Quick Steps ℹ️",
                     color = palette.textSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { showGuide = !showGuide }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable { showGuide = !showGuide }.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
 
             if (showGuide) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(palette.surfaceElevated)
-                        .border(1.dp, palette.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                        .padding(10.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(palette.surfaceElevated).border(1.dp, palette.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(10.dp)).padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = "1. Beam: Type title or paste URL below to launch on TV instantly (no D-pad typing).",
-                        color = palette.textSecondary,
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = "2. Multi-TV Sync: Tap other TVs in your home to lockstep Play/Pause in unison.",
-                        color = palette.textSecondary,
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = "3. Subtitles & CLI: Use 'argus cinema --srt movie.srt' on PC for live script sync.",
-                        color = palette.textSecondary,
-                        fontSize = 11.sp
-                    )
+                    Text("1. Beam: Type title or paste URL below to launch on TV instantly.", color = palette.textSecondary, fontSize = 11.sp)
+                    Text("2. Multi-TV Sync: Tap other TVs in your home to lockstep Play/Pause.", color = palette.textSecondary, fontSize = 11.sp)
+                    Text("3. Subtitles & CLI: Use 'argus cinema --srt movie.srt' on PC for live sync.", color = palette.textSecondary, fontSize = 11.sp)
                 }
             }
 
             // 1. LIVE NOW-PLAYING TELEMETRY CARD
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(palette.surfaceElevated)
-                    .border(1.dp, palette.border, RoundedCornerShape(12.dp))
-                    .padding(12.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(palette.surfaceElevated).border(1.dp, palette.border, RoundedCornerShape(12.dp)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 val statusLabel = nowPlaying?.status?.label ?: "IDLE"
                 val appLabel = nowPlaying?.appLabel ?: (currentDevice?.name ?: "No Active Stream")
-                Text(
-                    text = "$appLabel • $statusLabel",
-                    color = if (nowPlaying?.status == PlaybackStatus.PLAYING) palette.primaryAccent else palette.textSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = nowPlaying?.title ?: "Ready to beam or track playback",
-                    color = palette.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text("$appLabel • $statusLabel", color = if (nowPlaying?.status == PlaybackStatus.PLAYING) palette.primaryAccent else palette.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(nowPlaying?.title ?: "Ready to beam or track playback", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (nowPlaying != null && nowPlaying.positionMs > 0L) {
-                    Text(
-                        text = "Hardware Playhead: ${nowPlaying.formattedPlayhead(tickMs)}",
-                        color = palette.primaryAccent,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("Hardware Playhead: ${nowPlaying.formattedPlayhead(tickMs)}", color = palette.primaryAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
 
             // 2. DIRECT MOVIE SEARCH / URL BEAM (NO D-PAD PECKING)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "BEAM MOVIE SEARCH OR YOUTUBE URL",
-                    color = palette.textSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("BEAM MOVIE SEARCH OR YOUTUBE URL", color = palette.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(
                     value = queryText,
                     onValueChange = { queryText = it },
-                    placeholder = {
-                        Text("e.g. Stephen King Needful Things or URL", fontSize = 12.sp, color = palette.textSecondary)
-                    },
+                    placeholder = { Text("e.g. Stephen King Needful Things or URL", fontSize = 12.sp, color = palette.textSecondary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -184,14 +136,31 @@ fun CinemaBeamDialog(
             }
 
             // 3. MULTI-ROOM WATCH PARTY SYNC
-            if (otherDevices.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "MULTI-TV WATCH PARTY SYNC (PLAY/PAUSE LOCKSTEP)",
+                        text = "MULTI-ROOM WATCH PARTY SYNC",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
+                    Text(
+                        text = "Scan Wi-Fi 🔄",
+                        color = palette.primaryAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onScanRequested() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                if (otherDevices.isNotEmpty()) {
                     for (dev in otherDevices.take(4)) {
                         val isSynced = watchPartyIps.contains(dev.ipAddress)
                         val fState = followerTelemetry[dev.ipAddress]
@@ -220,11 +189,60 @@ fun CinemaBeamDialog(
                                 Text(subLabel, color = palette.textSecondary, fontSize = 11.sp)
                             }
                             Text(
-                                text = if (isSynced) "SYNCED" else "TAP TO SYNC",
+                                text = if (isSynced) "SYNCED 🍿" else "TAP TO SYNC",
                                 color = if (isSynced) palette.primaryAccent else palette.textSecondary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+                    }
+                } else {
+                    // Empty state card with inline IP add
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.surfaceElevated)
+                            .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Only 1 TV detected on Wi-Fi (${currentDevice?.name ?: "Current"}). Enter your second TV IP below to link them in lockstep:",
+                            color = palette.textSecondary,
+                            fontSize = 11.sp
+                        )
+                        var manualIpInput by remember { mutableStateOf("") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = manualIpInput,
+                                onValueChange = { manualIpInput = it },
+                                placeholder = { Text("e.g. 192.168.1.186", fontSize = 11.sp, color = palette.textSecondary) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = palette.textPrimary),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = palette.textPrimary,
+                                    unfocusedTextColor = palette.textPrimary,
+                                    focusedBorderColor = palette.primaryAccent,
+                                    unfocusedBorderColor = palette.border
+                                )
+                            )
+                            Button(
+                                onClick = {
+                                    if (manualIpInput.isNotBlank()) {
+                                        onAddManualIp(manualIpInput.trim())
+                                        manualIpInput = ""
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = palette.primaryAccent)
+                            ) {
+                                Text("Add TV", color = palette.background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

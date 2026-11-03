@@ -132,6 +132,8 @@ fun RemoteScreen(
                 followerTelemetry = mediaCoordinator?.followerTelemetry ?: emptyMap(),
                 onToggleWatchPartyDevice = { ip -> mediaCoordinator?.toggleWatchPartyDevice(ip, discoveredDevices) },
                 onBeamMedia = { q -> mediaCoordinator?.beamMediaToTv(currentDevice, q, discoveredDevices) },
+                onScanRequested = onScanRequested,
+                onAddManualIp = onManualIpAdded,
                 onDismiss = { showCinemaDialog = false }
             )
         }

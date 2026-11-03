@@ -208,6 +208,48 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     override suspend fun probe(host: String, port: Int): RemoteDevice? = withContext(Dispatchers.IO) {
         try {
             val formattedHost = if (host.contains(":") && !host.startsWith("[")) "[$host]" else host
+
+            // 1. Universal DIAL device-desc.xml probe (Hisense, Sony, TCL, Philips, Google TV)
+            try {
+                val dialUrl = "http://$formattedHost:8008/ssdp/device-desc.xml"
+                val dialReq = Request.Builder().url(dialUrl).get().build()
+                client.newCall(dialReq).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string().orEmpty()
+                        val friendlyName = Regex("<friendlyName>(.*?)</friendlyName>").find(body)?.groupValues?.get(1)
+                            ?.replace("&#39;", "'")?.replace("&amp;", "&")?.replace("&quot;", "\"")
+                        val manufacturer = Regex("<manufacturer>(.*?)</manufacturer>").find(body)?.groupValues?.get(1).orEmpty()
+                        val modelName = Regex("<modelName>(.*?)</modelName>").find(body)?.groupValues?.get(1).orEmpty()
+                        val udn = Regex("<UDN>(.*?)</UDN>").find(body)?.groupValues?.get(1).orEmpty()
+
+                        val displayName = when {
+                            !friendlyName.isNullOrBlank() -> friendlyName
+                            modelName.isNotBlank() -> "$modelName ($host)"
+                            else -> "Google TV ($host)"
+                        }
+                        val resolvedModel = when {
+                            manufacturer.isNotBlank() && modelName.isNotBlank() -> "$manufacturer $modelName"
+                            modelName.isNotBlank() -> modelName
+                            else -> "Google TV"
+                        }
+                        val effectivePort = if (isPortOpen(host, 5555, 150)) 5555 else 8008
+                        val mac = com.rmediatech.sovereignremote.net.WakeOnLan.getMacFromArp(host)
+
+                        return@withContext RemoteDevice(
+                            id = udn.ifBlank { "googletv_$host" },
+                            name = displayName,
+                            ipAddress = host,
+                            port = effectivePort,
+                            deviceType = DeviceType.GOOGLE_TV,
+                            modelName = resolvedModel,
+                            isEthernet = false,
+                            macAddress = mac
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 2. Legacy Chromecast eureka_info probe
             val url = "http://$formattedHost:8008/setup/eureka_info"
             val request = Request.Builder().url(url).get().build()
             client.newCall(request).execute().use { response ->

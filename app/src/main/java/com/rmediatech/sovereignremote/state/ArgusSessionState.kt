@@ -163,7 +163,7 @@ class ArgusSessionState(
                 }
 
                 val results = scanner.discoverAll(
-                    timeoutMs = 3500,
+                    timeoutMs = com.rmediatech.sovereignremote.discovery.UniversalTvScanner.DEFAULT_SCAN_TIMEOUT_MS,
                     onDeviceFound = { liveDev ->
                         if (ignoredIps.contains(liveDev.ipAddress)) return@discoverAll
                         activeSessionIps = activeSessionIps + liveDev.ipAddress

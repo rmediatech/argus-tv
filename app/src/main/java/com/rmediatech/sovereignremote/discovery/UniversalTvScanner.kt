@@ -27,7 +27,8 @@ class UniversalTvScanner(
 ) {
     companion object {
         private const val TAG = "UniversalTvScanner"
-        const val DEFAULT_SCAN_TIMEOUT_MS = 3500
+        const val DEFAULT_SCAN_TIMEOUT_MS = 5000
+        private val PRIMARY_TV_PORTS = listOf(5555, 8008, 8060, 8001, 3000)
     }
 
     suspend fun discoverAll(
@@ -130,19 +131,41 @@ class UniversalTvScanner(
                 }
 
                 val candidatePorts = registry.getAllCandidatePorts()
-                val concurrencyLimit = Semaphore(35)
+                val prioritizedPorts = (PRIMARY_TV_PORTS + candidatePorts).distinct()
+                val concurrencyLimit = Semaphore(80)
 
                 sortedCandidates.forEach { ip ->
                     launch {
                         concurrencyLimit.withPermit {
-                            for (port in candidatePorts) {
+                            var hostResponsive = false
+                            // Phase 1: Fast check on primary TV ports (85ms timeout)
+                            for (port in PRIMARY_TV_PORTS) {
                                 val current = foundDevices[ip]
-                                if (current != null && current.deviceType != DeviceType.GENERIC && current.port == 5555) break
-                                if (isPortReachable(ip, port, 180)) {
+                                if (current != null && current.deviceType != DeviceType.GENERIC && current.port == 5555) {
+                                    hostResponsive = true
+                                    break
+                                }
+                                if (isPortReachable(ip, port, 140)) {
+                                    hostResponsive = true
                                     val dev = registry.probeHost(ip, port)
                                     if (dev != null) {
                                         recordDevice(dev)
                                         if (dev.deviceType != DeviceType.GENERIC) break
+                                    }
+                                }
+                            }
+                            // Phase 2: If host was responsive or in ARP, check remaining candidate ports
+                            if (hostResponsive || activeArpIps.contains(ip)) {
+                                for (port in prioritizedPorts) {
+                                    if (PRIMARY_TV_PORTS.contains(port)) continue
+                                    val current = foundDevices[ip]
+                                    if (current != null && current.deviceType != DeviceType.GENERIC) break
+                                    if (isPortReachable(ip, port, 120)) {
+                                        val dev = registry.probeHost(ip, port)
+                                        if (dev != null) {
+                                            recordDevice(dev)
+                                            if (dev.deviceType != DeviceType.GENERIC) break
+                                        }
                                     }
                                 }
                             }
