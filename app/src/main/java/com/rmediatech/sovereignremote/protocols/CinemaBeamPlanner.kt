@@ -108,7 +108,6 @@ object CinemaBeamPlanner {
 
         return buildString {
             append("input keyevent 224; ")
-            append("svc power stayon true 2>/dev/null || true; ")
             append("am force-stop com.instagram.airwave 2>/dev/null || true; ")
 
             when (source) {

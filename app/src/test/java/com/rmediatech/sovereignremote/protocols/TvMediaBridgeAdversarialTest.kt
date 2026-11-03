@@ -99,7 +99,8 @@ class TvMediaBridgeAdversarialTest {
             isFireTv = true,
             startOffsetSeconds = 840L
         )
-        assertTrue(cmdWithOffset.contains("svc power stayon true"))
+        assertFalse("Must not tamper with global stayon setting", cmdWithOffset.contains("svc power stayon"))
+        assertTrue("Must wake screen when explicitly beaming media", cmdWithOffset.contains("input keyevent 224"))
         assertTrue(cmdWithOffset.contains("https://www.youtube.com/watch?v=MflAz-NR_bw&t=840s"))
     }
 

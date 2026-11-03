@@ -141,7 +141,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         if (!mac.isNullOrBlank()) {
                             WakeOnLan.wake(mac, device.ipAddress, context)
                         }
-                        try { dadb.shell("input keyevent 224; svc power stayon true 2>/dev/null || true; sleep 0.1; input keyevent 3") } catch (_: Exception) {}
+                        try { dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3") } catch (_: Exception) {}
                         for (wakeAttempt in 1..4) {
                             delay(250)
                             try {
@@ -150,8 +150,8 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                             } catch (_: Exception) {}
                         }
                     } else {
-                        // Release stayon guard before putting the TV to sleep
-                        try { dadb.shell("svc power stayon false 2>/dev/null || true") } catch (_: Exception) {}
+                        // Ensure manufacturer default sleep policy (0) is clean
+                        try { dadb.shell("settings put global stay_on_while_plugged_in 0 2>/dev/null || true") } catch (_: Exception) {}
                         dadb.shell(fastCmd)
                     }
                     return@withContext Result.success(Unit)
@@ -217,13 +217,7 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         try {
             val dadb = getDadb(device.ipAddress, 5555)
             val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
-            val state = TvMediaBridge.parseAdbMediaSession(dump)
-            if (state != null && !state.isScreenAwake && state.status == com.rmediatech.sovereignremote.model.PlaybackStatus.PLAYING) {
-                // Self-heal black screen when audio is actively playing while Display Power is OFF
-                try { dadb.shell("input keyevent 224") } catch (_: Exception) {}
-                return@withContext state.copy(isScreenAwake = true)
-            }
-            state
+            TvMediaBridge.parseAdbMediaSession(dump)
         } catch (_: Exception) {
             null
         }
@@ -244,18 +238,12 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         }
     }
 
-    override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            getDadb(device.ipAddress, 5555).shell("svc power stayon true 2>/dev/null || true")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = Result.success(Unit)
 
     override suspend fun releaseSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            getDadb(device.ipAddress, 5555).shell("svc power stayon false 2>/dev/null || true")
+            // Restore manufacturer default sleep behavior if stayon was ever stranded
+            getDadb(device.ipAddress, 5555).shell("settings put global stay_on_while_plugged_in 0 2>/dev/null || true")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

@@ -53,11 +53,13 @@ class ArgusMediaCoordinator(
                 val activeDevice = deviceProvider()
                 val allDevs = allDevicesProvider()
 
-                // 1. Reconcile RAII sleep-guard leases across primary TV + all Watch Party followers
-                val desiredGuardedIps = buildSet {
-                    if (activeDevice != null) add(activeDevice.ipAddress)
-                    addAll(watchPartyIps)
-                }
+                // 1. Reconcile RAII sleep-guard leases strictly when Watch Party is engaged
+                val desiredGuardedIps = if (watchPartyIps.isNotEmpty() && activeDevice != null) {
+                    buildSet {
+                        add(activeDevice.ipAddress)
+                        addAll(watchPartyIps)
+                    }
+                } else emptySet()
                 val currentGuardedIps = guardedDevices.keys.toSet()
                 for (removedIp in (currentGuardedIps - desiredGuardedIps)) {
                     guardedDevices.remove(removedIp)?.let { dev ->

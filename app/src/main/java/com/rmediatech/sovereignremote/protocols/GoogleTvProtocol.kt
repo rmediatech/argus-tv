@@ -106,7 +106,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         for (attempt in 1..4) {
                             delay(250)
                             try {
-                                dadb.shell("input keyevent 224; svc power stayon true 2>/dev/null || true; sleep 0.1; input keyevent 3")
+                                dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
                                 val checkOut = dadb.shell("dumpsys power").allOutput
                                 if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
                                     Log.i("GoogleTvProtocol", "TV screen awakened via ADB KEYCODE_WAKEUP on attempt $attempt")
@@ -115,7 +115,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                             } catch (_: Exception) {}
                         }
                     } else {
-                        try { dadb.shell("svc power stayon false 2>/dev/null || true") } catch (_: Exception) {}
+                        try { dadb.shell("settings put global stay_on_while_plugged_in 0 2>/dev/null || true") } catch (_: Exception) {}
                         dadb.shell("input keyevent $keycode")
                         Log.d("GoogleTvProtocol", "Sent ADB POWER keyevent $keycode to ${device.ipAddress}")
                     }
@@ -165,12 +165,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         try {
             val dadb = getDadb(device.ipAddress, 5555)
             val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
-            val state = TvMediaBridge.parseAdbMediaSession(dump)
-            if (state != null && !state.isScreenAwake && state.status == com.rmediatech.sovereignremote.model.PlaybackStatus.PLAYING) {
-                try { dadb.shell("input keyevent 224") } catch (_: Exception) {}
-                return@withContext state.copy(isScreenAwake = true)
-            }
-            state
+            TvMediaBridge.parseAdbMediaSession(dump)
         } catch (_: Exception) {
             null
         }
@@ -198,20 +193,13 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         launchApp(device, dialAppName)
     }
 
-    override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
-        if (!isPortOpen(device.ipAddress, 5555, 250)) return@withContext Result.success(Unit)
-        try {
-            getDadb(device.ipAddress, 5555).shell("svc power stayon true 2>/dev/null || true")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = Result.success(Unit)
 
     override suspend fun releaseSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {
         if (!isPortOpen(device.ipAddress, 5555, 250)) return@withContext Result.success(Unit)
         try {
-            getDadb(device.ipAddress, 5555).shell("svc power stayon false 2>/dev/null || true")
+            // Restore manufacturer default sleep behavior if stayon was ever stranded
+            getDadb(device.ipAddress, 5555).shell("settings put global stay_on_while_plugged_in 0 2>/dev/null || true")
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

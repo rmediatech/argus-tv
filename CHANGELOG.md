@@ -5,6 +5,14 @@ All notable changes to **Argus (Android)** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-03
+
+### Fixed
+- **Zero-Side-Effect Telemetry Observation (`FireTvProtocol.kt` & `GoogleTvProtocol.kt`)**: Purged rogue `input keyevent 224` (`KEYCODE_WAKEUP`) pulse from `queryNowPlaying()`. Telemetry observation is now strictly read-only and passive, eliminating the unintended behavior where a user-sleeping TV was immediately woken back up by background polling reading a lingering media session.
+- **Foreign Host Global Setting Tampering Purged (`CinemaBeamPlanner.kt`, `FireTvProtocol.kt`, `GoogleTvProtocol.kt`)**: Completely removed `svc power stayon true/false` execution. Overwriting Android's persistent `Settings.Global.STAY_ON_WHILE_PLUGGED_IN` (value 7) forced AC-powered smart TVs/sticks to reject sleep or wake spontaneously upon idle timeouts. Streaming applications (YouTube, Prime, ExoPlayer) already hold native hardware decoder display wakelocks during active playback without system setting mutation.
+- **Manufacturer Power Setting Self-Sanitizing (`releaseSleepGuard`)**: Ensured `stay_on_while_plugged_in` is cleanly restored to factory default `0` on sleep/power-off or guard release, healing any hardware previously touched.
+- **Scoped Watch Party RAII Guard Leases (`ArgusMediaCoordinator.kt`)**: Restricted TV sleep-inhibition leases strictly to active, engaged Watch Party playback sessions (`watchPartyIps.isNotEmpty()`), leaving idle remote control completely transparent to native TV sleep timers.
+
 ## [1.2.0] - 2026-11-03
 
 ### Added
