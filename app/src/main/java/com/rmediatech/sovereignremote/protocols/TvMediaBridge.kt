@@ -175,9 +175,9 @@ object TvMediaBridge {
             append("input keyevent 224; ")
             append("svc power stayon true 2>/dev/null || true; ")
             append("am force-stop com.instagram.airwave 2>/dev/null || true; ")
-            append("am force-stop $ytPkg 2>/dev/null || true; ")
-            append("am start -a android.intent.action.VIEW -d '$targetUrl' $ytActivity ")
-            append("|| am start -a android.intent.action.VIEW -d '$targetUrl' $ytPkg ")
+            // Preserve active signed-in user profile without forcing "Who's watching?" chooser
+            append("am start -a android.intent.action.VIEW -d '$targetUrl' --activity-single-top $ytActivity ")
+            append("|| am start -a android.intent.action.VIEW -d '$targetUrl' --activity-single-top $ytPkg ")
             append("|| am start -a android.intent.action.VIEW -d '$targetUrl'")
         }
     }

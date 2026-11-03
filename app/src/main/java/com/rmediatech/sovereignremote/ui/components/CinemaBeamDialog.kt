@@ -1,5 +1,6 @@
 package com.rmediatech.sovereignremote.ui.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,7 @@ fun CinemaBeamDialog(
     onDismiss: () -> Unit
 ) {
     val palette = LocalThemePalette.current
+    val view = LocalView.current
     val scrollState = rememberScrollState()
     var queryText by remember { mutableStateOf("") }
     var showGuide by remember { mutableStateOf(false) }
@@ -174,7 +177,10 @@ fun CinemaBeamDialog(
                                     if (isSynced) palette.primaryAccent else palette.border,
                                     RoundedCornerShape(10.dp)
                                 )
-                                .clickable { onToggleWatchPartyDevice(dev.ipAddress) }
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    onToggleWatchPartyDevice(dev.ipAddress)
+                                }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
