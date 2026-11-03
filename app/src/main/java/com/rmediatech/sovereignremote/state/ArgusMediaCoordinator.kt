@@ -175,7 +175,19 @@ class ArgusMediaCoordinator(
                 async(Dispatchers.IO) { registry.launchMediaUri(dev, clean) }
             }.awaitAll()
             if (results.first().isSuccess) {
-                delay(2500)
+                if (followers.isNotEmpty()) {
+                    // Auto-Lockstep: Buffer lock and parallel release to eliminate cold-boot discrepancy!
+                    delay(3500)
+                    allTargets.map { dev ->
+                        async(Dispatchers.IO) { registry.sendKey(dev, RemoteKey.PLAY_PAUSE) }
+                    }.awaitAll()
+                    delay(1500)
+                    allTargets.map { dev ->
+                        async(Dispatchers.IO) { registry.sendKey(dev, RemoteKey.PLAY_PAUSE) }
+                    }.awaitAll()
+                } else {
+                    delay(2500)
+                }
                 val refreshed = withContext(Dispatchers.IO) { registry.queryNowPlaying(target) }
                 nowPlaying = refreshed
             } else {

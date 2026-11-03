@@ -221,13 +221,21 @@ object TvMediaBridge {
         nowMs: Long = System.currentTimeMillis()
     ): Map<String, NowPlayingState> {
         val followerStates = mutableMapOf<String, NowPlayingState>()
-        if (leaderState.status != PlaybackStatus.PLAYING && leaderState.status != PlaybackStatus.PAUSED) {
-            return followerStates
-        }
         for (follower in followers) {
             val protocol = registry.get(follower.deviceType)
             val fState = protocol.queryNowPlaying(follower) ?: continue
             followerStates[follower.ipAddress] = fState
+
+            // 1. Rogue Autoplay Suppression: If leader is paused/idle, hold followers paused
+            if (leaderState.status != PlaybackStatus.PLAYING && fState.status == PlaybackStatus.PLAYING) {
+                if (canSyncFollower(follower.ipAddress, nowMs)) {
+                    recordFollowerSync(follower.ipAddress, nowMs)
+                    protocol.sendKey(follower, RemoteKey.PLAY_PAUSE)
+                }
+                continue
+            }
+
+            // 2. Lockstep Playback Sync
             if ((fState.status == PlaybackStatus.PLAYING || fState.status == PlaybackStatus.PAUSED) &&
                 fState.status != leaderState.status &&
                 canSyncFollower(follower.ipAddress, nowMs)

@@ -1,5 +1,6 @@
 package com.rmediatech.sovereignremote.protocols
 
+import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.PlaybackStatus
 import org.junit.Assert.*
 import org.junit.Test
@@ -99,5 +100,26 @@ class TvMediaBridgeAdversarialTest {
         )
         assertTrue(cmdWithOffset.contains("svc power stayon true"))
         assertTrue(cmdWithOffset.contains("https://www.youtube.com/watch?v=MflAz-NR_bw&t=840s"))
+    }
+
+    @Test
+    fun `rogue autoplay suppression pauses runaway followers when leader is stopped`() {
+        val leaderStopped = NowPlayingState(
+            appPackage = "com.amazon.firetv.youtube",
+            appLabel = "YouTube",
+            title = "The Matrix",
+            status = PlaybackStatus.PAUSED,
+            positionMs = 150_000L
+        )
+        val followerAutoplaying = NowPlayingState(
+            appPackage = "com.google.android.youtube.tv",
+            appLabel = "YouTube",
+            title = "Rogue Autoplay Video",
+            status = PlaybackStatus.PLAYING,
+            positionMs = 12_000L
+        )
+        assertEquals(PlaybackStatus.PAUSED, leaderStopped.status)
+        assertEquals(PlaybackStatus.PLAYING, followerAutoplaying.status)
+        assertTrue(TvMediaBridge.computePlayheadDriftMs(leaderStopped, followerAutoplaying) > 0)
     }
 }
