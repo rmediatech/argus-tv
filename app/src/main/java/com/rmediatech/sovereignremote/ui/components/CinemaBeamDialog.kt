@@ -114,7 +114,7 @@ fun CinemaBeamDialog(
                 OutlinedTextField(
                     value = queryText,
                     onValueChange = { queryText = it },
-                    placeholder = { Text("e.g. Stephen King Needful Things or URL", fontSize = 12.sp, color = palette.textSecondary) },
+                    placeholder = { Text("e.g. Dreamcatcher, Matrix, or URL", fontSize = 12.sp, color = palette.textSecondary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -127,6 +127,7 @@ fun CinemaBeamDialog(
                 Button(
                     onClick = {
                         if (queryText.isNotBlank()) {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             onBeamMedia(queryText)
                             onDismiss()
                         }

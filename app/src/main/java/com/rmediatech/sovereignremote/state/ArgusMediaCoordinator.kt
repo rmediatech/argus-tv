@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.rmediatech.sovereignremote.logging.SovereignLogger
 import com.rmediatech.sovereignremote.model.NowPlayingState
+import com.rmediatech.sovereignremote.model.PlaybackStatus
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import com.rmediatech.sovereignremote.protocols.TvAutoHealingSentinel
@@ -189,19 +190,44 @@ class ArgusMediaCoordinator(
         Toast.makeText(context, "Beaming to $label...", Toast.LENGTH_SHORT).show()
 
         scope.launch {
+            // 1. Resolve canonical direct stream URL so all TVs play the identical stream
+            val canonicalUri = TvMediaBridge.resolveCanonicalVideoUri(clean)
+            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Resolved canonical video: '$canonicalUri'")
+
             val results = allTargets.map { dev ->
-                async(Dispatchers.IO) { registry.launchMediaUri(dev, clean) }
+                async(Dispatchers.IO) { registry.launchMediaUri(dev, canonicalUri) }
             }.awaitAll()
             if (results.first().isSuccess) {
                 if (followers.isNotEmpty()) {
-                    // Auto-Lockstep: Buffer lock and parallel release to eliminate cold-boot discrepancy!
-                    delay(3500)
+                    // Auto-confirm profile if stalled on account picker
+                    delay(1200)
                     allTargets.map { dev ->
-                        async(Dispatchers.IO) { registry.sendKey(dev, RemoteKey.PLAY_PAUSE) }
+                        async(Dispatchers.IO) {
+                            val state = registry.queryNowPlaying(dev)
+                            if (state == null || state.status != PlaybackStatus.PLAYING) {
+                                registry.sendKey(dev, RemoteKey.SELECT)
+                            }
+                        }
+                    }.awaitAll()
+
+                    // Auto-Lockstep: State-aware buffer lock and synchronized parallel release
+                    delay(2500)
+                    allTargets.map { dev ->
+                        async(Dispatchers.IO) {
+                            val s = registry.queryNowPlaying(dev)
+                            if (s?.status == PlaybackStatus.PLAYING) {
+                                registry.sendKey(dev, RemoteKey.PLAY_PAUSE)
+                            }
+                        }
                     }.awaitAll()
                     delay(1500)
                     allTargets.map { dev ->
-                        async(Dispatchers.IO) { registry.sendKey(dev, RemoteKey.PLAY_PAUSE) }
+                        async(Dispatchers.IO) {
+                            val s = registry.queryNowPlaying(dev)
+                            if (s == null || s.status == PlaybackStatus.PAUSED) {
+                                registry.sendKey(dev, RemoteKey.PLAY_PAUSE)
+                            }
+                        }
                     }.awaitAll()
                 } else {
                     delay(2500)

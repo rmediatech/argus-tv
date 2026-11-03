@@ -122,4 +122,22 @@ class TvMediaBridgeAdversarialTest {
         assertEquals(PlaybackStatus.PLAYING, followerAutoplaying.status)
         assertTrue(TvMediaBridge.computePlayheadDriftMs(leaderStopped, followerAutoplaying) > 0)
     }
+
+    @Test
+    fun `resolveCanonicalVideoUri passes direct URLs directly and handles hostile queries`() = kotlinx.coroutines.runBlocking {
+        // Direct URLs pass through immediately without querying
+        val directUrl = "https://www.youtube.com/watch?v=s2-13B7b61E"
+        assertEquals(directUrl, TvMediaBridge.resolveCanonicalVideoUri(directUrl))
+
+        val shortUrl = "https://youtu.be/s2-13B7b61E"
+        assertEquals(shortUrl, TvMediaBridge.resolveCanonicalVideoUri(shortUrl))
+
+        // Empty / blank input returns trimmed
+        assertEquals("", TvMediaBridge.resolveCanonicalVideoUri("   "))
+
+        // Hostile query with breakout characters does not panic and produces valid URL
+        val hostileQuery = "<script>alert('xss')</script>; rm -rf /data; \u0000"
+        val resolved = TvMediaBridge.resolveCanonicalVideoUri(hostileQuery)
+        assertTrue(resolved.startsWith("https://www.youtube.com/"))
+    }
 }

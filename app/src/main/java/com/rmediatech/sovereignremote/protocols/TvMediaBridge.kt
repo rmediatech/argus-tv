@@ -5,8 +5,13 @@ import com.rmediatech.sovereignremote.model.PlaybackStatus
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import com.rmediatech.sovereignremote.security.SovereignSanitizer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * Sovereign TV Media Bridge & Hardware Playhead Engine:
@@ -15,6 +20,13 @@ import java.util.concurrent.ConcurrentHashMap
  * with anti-oscillation cooldowns and drift calculation.
  */
 object TvMediaBridge {
+
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
+            .build()
+    }
 
     private val WAKE_TIME_REGEX = Regex("""mLastWakeTime=(\d+)\s*\((\d+)\s*ms ago\)""")
     private val PLAYBACK_STATE_REGEX = Regex(
@@ -139,10 +151,40 @@ object TvMediaBridge {
     }
 
     /**
+     * Resolves an arbitrary query or URL into a canonical direct video URL (e.g. watch?v=...).
+     * Direct video URLs pass through immediately. Text queries query YouTube to extract the #1
+     * canonical video ID so all Watch Party TVs play the identical video in lockstep.
+     */
+    suspend fun resolveCanonicalVideoUri(
+        input: String,
+        client: OkHttpClient = httpClient
+    ): String = withContext(Dispatchers.IO) {
+        val trimmed = input.trim().take(256)
+        if (trimmed.isBlank() || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return@withContext trimmed
+        }
+        try {
+            val encoded = URLEncoder.encode(trimmed, "UTF-8")
+            val req = Request.Builder()
+                .url("https://www.youtube.com/results?search_query=$encoded")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val match = Regex("""/watch\?v=([a-zA-Z0-9_-]{11})""").find(resp.body?.string().orEmpty())
+                    if (match != null) return@withContext "https://www.youtube.com/watch?v=${match.groupValues[1]}"
+                }
+            }
+        } catch (_: Exception) {}
+        val fallbackEncoded = URLEncoder.encode(trimmed, "UTF-8")
+        "https://www.youtube.com/results?search_query=$fallbackEncoded"
+    }
+
+    /**
      * Builds an atomic, self-healing ADB shell command that:
      * 1. Wakes the HDMI display pipeline (`input keyevent 224`) and engages `svc power stayon true`.
      * 2. Purges zombie background overlay stacks (`com.instagram.airwave`).
-     * 3. Cold-starts singleTask Cobalt (`com.amazon.firetv.youtube`) when deep-linking a video or search query.
+     * 3. Launches singleTop YouTube (`com.amazon.firetv.youtube` or `com.google.android.youtube.tv`).
      */
     fun buildAdbMediaBeamCommand(
         uriOrQuery: String,
@@ -160,9 +202,7 @@ object TvMediaBridge {
         }
         val targetUrl = if (startOffsetSeconds > 0L && baseUrl.contains("watch?v=") && !baseUrl.contains("&t=")) {
             "${baseUrl}&t=${startOffsetSeconds}s"
-        } else {
-            baseUrl
-        }
+        } else baseUrl
 
         val ytPkg = if (isFireTv) "com.amazon.firetv.youtube" else "com.google.android.youtube.tv"
         val ytActivity = if (isFireTv) {
@@ -197,18 +237,14 @@ object TvMediaBridge {
      * Checks whether a follower TV is eligible for an automatic state sync command,
      * preventing feedback oscillation when hardware transitions take >300ms.
      */
-    fun canSyncFollower(ip: String, nowMs: Long = System.currentTimeMillis()): Boolean {
-        val last = lastFollowerSyncMs[ip] ?: 0L
-        return (nowMs - last) >= SYNC_COOLDOWN_MS
-    }
+    fun canSyncFollower(ip: String, nowMs: Long = System.currentTimeMillis()): Boolean =
+        (nowMs - (lastFollowerSyncMs[ip] ?: 0L)) >= SYNC_COOLDOWN_MS
 
     fun recordFollowerSync(ip: String, nowMs: Long = System.currentTimeMillis()) {
         lastFollowerSyncMs[ip] = nowMs
     }
 
-    fun clearSyncCooldowns() {
-        lastFollowerSyncMs.clear()
-    }
+    fun clearSyncCooldowns() { lastFollowerSyncMs.clear() }
 
     /**
      * Synchronizes follower TVs on the LAN with the primary TV's Play/Pause state (Watch Party Sync)
@@ -247,18 +283,15 @@ object TvMediaBridge {
         return followerStates
     }
 
-    fun friendlyAppName(pkg: String): String {
-        val lower = pkg.lowercase()
-        return when {
-            lower.contains("youtube") -> "YouTube"
-            lower.contains("netflix") -> "Netflix"
-            lower.contains("avod") || lower.contains("prime") -> "Prime Video"
-            lower.contains("pluto") -> "Pluto TV"
-            lower.contains("tubi") -> "Tubi"
-            lower.contains("plex") -> "Plex"
-            lower.contains("disney") -> "Disney+"
-            lower.contains("alexamediaplayer") -> "Alexa Media"
-            else -> pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
-        }
+    fun friendlyAppName(pkg: String): String = when {
+        pkg.contains("youtube", ignoreCase = true) -> "YouTube"
+        pkg.contains("netflix", ignoreCase = true) -> "Netflix"
+        pkg.contains("avod", ignoreCase = true) || pkg.contains("prime", ignoreCase = true) -> "Prime Video"
+        pkg.contains("pluto", ignoreCase = true) -> "Pluto TV"
+        pkg.contains("tubi", ignoreCase = true) -> "Tubi"
+        pkg.contains("plex", ignoreCase = true) -> "Plex"
+        pkg.contains("disney", ignoreCase = true) -> "Disney+"
+        pkg.contains("alexamediaplayer", ignoreCase = true) -> "Alexa Media"
+        else -> pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
     }
 }
