@@ -151,76 +151,26 @@ object TvMediaBridge {
     }
 
     /**
-     * Resolves an arbitrary query or URL into a canonical direct video URL (e.g. watch?v=...).
-     * Direct video URLs pass through immediately. Text queries query YouTube to extract the #1
-     * canonical video ID so all Watch Party TVs play the identical video in lockstep.
+     * Resolves the canonical direct stream URL for a given input query or link via CinemaBeamPlanner.
      */
     suspend fun resolveCanonicalVideoUri(
         input: String,
         client: OkHttpClient = httpClient
-    ): String = withContext(Dispatchers.IO) {
-        val trimmed = input.trim().take(256)
-        if (trimmed.isBlank() || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            return@withContext trimmed
-        }
-        try {
-            val encoded = URLEncoder.encode(trimmed, "UTF-8")
-            val req = Request.Builder()
-                .url("https://www.youtube.com/results?search_query=$encoded")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .build()
-            client.newCall(req).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    val match = Regex("""/watch\?v=([a-zA-Z0-9_-]{11})""").find(resp.body?.string().orEmpty())
-                    if (match != null) return@withContext "https://www.youtube.com/watch?v=${match.groupValues[1]}"
-                }
-            }
-        } catch (_: Exception) {}
-        val fallbackEncoded = URLEncoder.encode(trimmed, "UTF-8")
-        "https://www.youtube.com/results?search_query=$fallbackEncoded"
-    }
+    ): String = CinemaBeamPlanner.resolveMediaUri(input, com.rmediatech.sovereignremote.model.CinemaSource.YOUTUBE, client)
 
     /**
-     * Builds an atomic, self-healing ADB shell command that:
-     * 1. Wakes the HDMI display pipeline (`input keyevent 224`) and engages `svc power stayon true`.
-     * 2. Purges zombie background overlay stacks (`com.instagram.airwave`).
-     * 3. Launches singleTop YouTube (`com.amazon.firetv.youtube` or `com.google.android.youtube.tv`).
+     * Builds an atomic, self-healing ADB shell command via CinemaBeamPlanner.
      */
     fun buildAdbMediaBeamCommand(
         uriOrQuery: String,
         isFireTv: Boolean,
         startOffsetSeconds: Long = 0L
-    ): String {
-        val trimmed = uriOrQuery.trim().take(256)
-        require(trimmed.isNotBlank()) { "Media query or URL cannot be blank" }
-        val safeInput = trimmed.replace(Regex("""['"`$\\;\r\n\t|&<>]"""), "")
-        val baseUrl = if (safeInput.startsWith("http://") || safeInput.startsWith("https://")) {
-            safeInput
-        } else {
-            val encoded = URLEncoder.encode(safeInput, "UTF-8")
-            "https://www.youtube.com/results?search_query=$encoded"
-        }
-        val targetUrl = if (startOffsetSeconds > 0L && baseUrl.contains("watch?v=") && !baseUrl.contains("&t=")) {
-            "${baseUrl}&t=${startOffsetSeconds}s"
-        } else baseUrl
-
-        val ytPkg = if (isFireTv) "com.amazon.firetv.youtube" else "com.google.android.youtube.tv"
-        val ytActivity = if (isFireTv) {
-            "$ytPkg/dev.cobalt.app.MainActivity"
-        } else {
-            "$ytPkg/com.google.android.apps.youtube.tv.activity.ShellActivity"
-        }
-
-        return buildString {
-            append("input keyevent 224; ")
-            append("svc power stayon true 2>/dev/null || true; ")
-            append("am force-stop com.instagram.airwave 2>/dev/null || true; ")
-            // Preserve active signed-in user profile without forcing "Who's watching?" chooser
-            append("am start -a android.intent.action.VIEW -d '$targetUrl' --activity-single-top $ytActivity ")
-            append("|| am start -a android.intent.action.VIEW -d '$targetUrl' --activity-single-top $ytPkg ")
-            append("|| am start -a android.intent.action.VIEW -d '$targetUrl'")
-        }
-    }
+    ): String = CinemaBeamPlanner.buildAdbBeamCommand(
+        uriOrQuery,
+        isFireTv,
+        com.rmediatech.sovereignremote.model.CinemaSource.YOUTUBE,
+        startOffsetSeconds
+    )
 
     /**
      * Computes signed playhead drift in milliseconds (`leaderPos - followerPos`).
@@ -266,7 +216,7 @@ object TvMediaBridge {
             if (leaderState.status != PlaybackStatus.PLAYING && fState.status == PlaybackStatus.PLAYING) {
                 if (canSyncFollower(follower.ipAddress, nowMs)) {
                     recordFollowerSync(follower.ipAddress, nowMs)
-                    protocol.sendKey(follower, RemoteKey.PLAY_PAUSE)
+                    protocol.sendKey(follower, RemoteKey.PAUSE)
                 }
                 continue
             }
@@ -277,7 +227,8 @@ object TvMediaBridge {
                 canSyncFollower(follower.ipAddress, nowMs)
             ) {
                 recordFollowerSync(follower.ipAddress, nowMs)
-                protocol.sendKey(follower, RemoteKey.PLAY_PAUSE)
+                val syncKey = if (leaderState.status == PlaybackStatus.PLAYING) RemoteKey.PLAY else RemoteKey.PAUSE
+                protocol.sendKey(follower, syncKey)
             }
         }
         return followerStates

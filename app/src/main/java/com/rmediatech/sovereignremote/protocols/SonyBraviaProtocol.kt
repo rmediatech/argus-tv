@@ -156,6 +156,8 @@ class SonyBraviaProtocol(private val client: OkHttpClient? = null) : SmartTvProt
         RemoteKey.VOLUME_DOWN -> "AAAAAQAAAAEAAAATAw=="
         RemoteKey.MUTE -> "AAAAAQAAAAEAAAAUAw=="
         RemoteKey.PLAY_PAUSE -> "AAAAAgAAAJcAAAAaAw=="
+        RemoteKey.PLAY -> "AAAAAgAAAJcAAAAaAw=="
+        RemoteKey.PAUSE -> "AAAAAgAAAJcAAAAZAw=="
         RemoteKey.REWIND -> "AAAAAgAAAJcAAAAbAw=="
         RemoteKey.FAST_FORWARD -> "AAAAAgAAAJcAAAAcAw=="
         RemoteKey.INFO -> "AAAAAQAAAAEAAABLAw=="

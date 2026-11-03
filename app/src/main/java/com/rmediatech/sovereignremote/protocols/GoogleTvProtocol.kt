@@ -2,6 +2,7 @@ package com.rmediatech.sovereignremote.protocols
 
 import android.content.Context
 import android.util.Log
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -78,6 +79,8 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.VOLUME_DOWN -> 25
             RemoteKey.MUTE -> 164
             RemoteKey.PLAY_PAUSE -> 85
+            RemoteKey.PLAY -> 126
+            RemoteKey.PAUSE -> 127
             RemoteKey.REWIND -> 89
             RemoteKey.FAST_FORWARD -> 90
             RemoteKey.INFO -> 176 // Android KEYCODE_SETTINGS (Quick Settings / Options on Google TV)
@@ -173,16 +176,26 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         }
     }
 
-    override suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun launchMediaUri(
+        device: RemoteDevice,
+        uriOrQuery: String,
+        source: CinemaSource
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         if (isPortOpen(device.ipAddress, 5555, 250)) {
             try {
                 val dadb = getDadb(device.ipAddress, 5555)
-                val cmd = TvMediaBridge.buildAdbMediaBeamCommand(uriOrQuery, isFireTv = false)
+                val cmd = CinemaBeamPlanner.buildAdbBeamCommand(uriOrQuery, isFireTv = false, source = source)
                 dadb.shell(cmd)
                 return@withContext Result.success(Unit)
             } catch (_: Exception) {}
         }
-        launchApp(device, "YouTube")
+        val dialAppName = when (source) {
+            CinemaSource.YOUTUBE -> "YouTube"
+            CinemaSource.PRIME_VIDEO -> "PrimeVideo"
+            CinemaSource.PLUTO_TV -> "PlutoTV"
+            CinemaSource.DIRECT_URL -> "YouTube"
+        }
+        launchApp(device, dialAppName)
     }
 
     override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = withContext(Dispatchers.IO) {

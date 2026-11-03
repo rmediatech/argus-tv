@@ -202,6 +202,8 @@ class SamsungProtocol(private val client: OkHttpClient? = null) : SmartTvProtoco
         RemoteKey.VOLUME_DOWN -> "KEY_VOLDOWN"
         RemoteKey.MUTE -> "KEY_MUTE"
         RemoteKey.PLAY_PAUSE -> "KEY_PLAY"
+        RemoteKey.PLAY -> "KEY_PLAY"
+        RemoteKey.PAUSE -> "KEY_PAUSE"
         RemoteKey.REWIND -> "KEY_REWIND"
         RemoteKey.FAST_FORWARD -> "KEY_FF"
         RemoteKey.INFO -> "KEY_INFO"

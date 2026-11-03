@@ -53,6 +53,8 @@ class GenericDialProtocol : SmartTvProtocol {
             val appTarget = when (key) {
                 RemoteKey.HOME -> "YouTube"
                 RemoteKey.PLAY_PAUSE -> "YouTube"
+                RemoteKey.PLAY -> "YouTube"
+                RemoteKey.PAUSE -> "YouTube"
                 else -> null
             }
             if (appTarget != null) {

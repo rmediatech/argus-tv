@@ -12,7 +12,7 @@ class ProtocolKeycodeTest {
         for (key in RemoteKey.entries) {
             assertTrue("Key ${key.name} code must not be blank", key.code.isNotBlank())
         }
-        assertEquals(15, RemoteKey.entries.size)
+        assertEquals(17, RemoteKey.entries.size)
     }
 
     @Test
@@ -31,6 +31,8 @@ class ProtocolKeycodeTest {
             RemoteKey.VOLUME_DOWN to 25,
             RemoteKey.MUTE to 164,
             RemoteKey.PLAY_PAUSE to 85,
+            RemoteKey.PLAY to 126,
+            RemoteKey.PAUSE to 127,
             RemoteKey.REWIND to 89,
             RemoteKey.FAST_FORWARD to 90,
             RemoteKey.INFO to 176
@@ -50,6 +52,8 @@ class ProtocolKeycodeTest {
                 RemoteKey.VOLUME_DOWN -> 25
                 RemoteKey.MUTE -> 164
                 RemoteKey.PLAY_PAUSE -> 85
+                RemoteKey.PLAY -> 126
+                RemoteKey.PAUSE -> 127
                 RemoteKey.REWIND -> 89
                 RemoteKey.FAST_FORWARD -> 90
                 RemoteKey.INFO -> 176
@@ -73,6 +77,8 @@ class ProtocolKeycodeTest {
             RemoteKey.VOLUME_DOWN to 114,
             RemoteKey.MUTE to 113,
             RemoteKey.PLAY_PAUSE to 164,
+            RemoteKey.PLAY to 207,
+            RemoteKey.PAUSE to 201,
             RemoteKey.REWIND to 168,
             RemoteKey.FAST_FORWARD to 208,
             RemoteKey.INFO to 139
@@ -92,6 +98,8 @@ class ProtocolKeycodeTest {
                 RemoteKey.VOLUME_DOWN -> 114
                 RemoteKey.MUTE -> 113
                 RemoteKey.PLAY_PAUSE -> 164
+                RemoteKey.PLAY -> 207
+                RemoteKey.PAUSE -> 201
                 RemoteKey.REWIND -> 168
                 RemoteKey.FAST_FORWARD -> 208
                 RemoteKey.INFO -> 139

@@ -34,6 +34,8 @@ enum class RemoteKey(val code: String) {
     VOLUME_DOWN("VolumeDown"),
     MUTE("VolumeMute"),
     PLAY_PAUSE("Play"),
+    PLAY("PlayExplicit"),
+    PAUSE("PauseExplicit"),
     REWIND("Rev"),
     FAST_FORWARD("Fwd"),
     INFO("Info")

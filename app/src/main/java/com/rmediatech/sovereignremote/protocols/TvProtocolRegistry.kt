@@ -1,6 +1,7 @@
 package com.rmediatech.sovereignremote.protocols
 
 import android.content.Context
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -214,9 +215,13 @@ class TvProtocolRegistry(private val context: Context? = null) {
         return protocol.queryNowPlaying(device)
     }
 
-    suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> {
+    suspend fun launchMediaUri(
+        device: RemoteDevice,
+        uriOrQuery: String,
+        source: CinemaSource = CinemaSource.YOUTUBE
+    ): Result<Unit> {
         val protocol = get(device.deviceType)
-        return protocol.launchMediaUri(device, uriOrQuery)
+        return protocol.launchMediaUri(device, uriOrQuery, source)
     }
 
     suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> {

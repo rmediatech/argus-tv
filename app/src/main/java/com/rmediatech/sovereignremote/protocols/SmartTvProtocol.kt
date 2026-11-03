@@ -1,5 +1,6 @@
 package com.rmediatech.sovereignremote.protocols
 
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -52,8 +53,11 @@ interface SmartTvProtocol {
     /**
      * Beams a direct video URL or search query to the TV, waking the display pipeline first.
      */
-    suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> =
-        launchApp(device, uriOrQuery)
+    suspend fun launchMediaUri(
+        device: RemoteDevice,
+        uriOrQuery: String,
+        source: CinemaSource = CinemaSource.YOUTUBE
+    ): Result<Unit> = launchApp(device, uriOrQuery)
 
     /**
      * Acquires an active session sleep-inhibition lease on the target TV while argus-tv controls it.

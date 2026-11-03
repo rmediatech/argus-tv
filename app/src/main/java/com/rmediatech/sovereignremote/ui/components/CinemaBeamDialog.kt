@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.PlaybackStatus
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -38,7 +39,7 @@ fun CinemaBeamDialog(
     watchPartyIps: Set<String>,
     followerTelemetry: Map<String, NowPlayingState> = emptyMap(),
     onToggleWatchPartyDevice: (String) -> Unit,
-    onBeamMedia: (String) -> Unit,
+    onBeamMedia: (String, CinemaSource) -> Unit,
     onScanRequested: () -> Unit = {},
     onAddManualIp: (String) -> Unit = {},
     onDismiss: () -> Unit
@@ -46,6 +47,7 @@ fun CinemaBeamDialog(
     val palette = LocalThemePalette.current
     val view = LocalView.current
     val scrollState = rememberScrollState()
+    var selectedSource by remember { mutableStateOf(CinemaSource.YOUTUBE) }
     var queryText by remember { mutableStateOf("") }
     var showGuide by remember { mutableStateOf(false) }
     var tickMs by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -108,13 +110,42 @@ fun CinemaBeamDialog(
                 }
             }
 
-            // 2. DIRECT MOVIE SEARCH / URL BEAM (NO D-PAD PECKING)
+            // 2. SST MEDIA SOURCE SELECTOR & BEAM INPUT
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("BEAM MOVIE SEARCH OR YOUTUBE URL", color = palette.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text("STREAMING SOURCE & SEARCH", color = palette.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CinemaSource.entries.forEach { src ->
+                        val isSelected = selectedSource == src
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) palette.primaryAccent.copy(alpha = 0.2f) else palette.surfaceElevated)
+                                .border(1.dp, if (isSelected) palette.primaryAccent else palette.border, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    selectedSource = src
+                                }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${src.iconEmoji} ${src.displayName}",
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) palette.primaryAccent else palette.textSecondary,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = queryText,
                     onValueChange = { queryText = it },
-                    placeholder = { Text("e.g. Dreamcatcher, Matrix, or URL", fontSize = 12.sp, color = palette.textSecondary) },
+                    placeholder = { Text(selectedSource.placeholder, fontSize = 11.sp, color = palette.textSecondary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -128,14 +159,14 @@ fun CinemaBeamDialog(
                     onClick = {
                         if (queryText.isNotBlank()) {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            onBeamMedia(queryText)
+                            onBeamMedia(queryText, selectedSource)
                             onDismiss()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = palette.primaryAccent)
                 ) {
-                    Text("Beam Straight to TV", color = palette.background, fontWeight = FontWeight.Bold)
+                    Text("Beam ${selectedSource.displayName} to TV", color = palette.background, fontWeight = FontWeight.Bold)
                 }
             }
 

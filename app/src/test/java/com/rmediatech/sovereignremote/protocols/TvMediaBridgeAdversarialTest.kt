@@ -1,5 +1,6 @@
 package com.rmediatech.sovereignremote.protocols
 
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.PlaybackStatus
 import org.junit.Assert.*
@@ -139,5 +140,26 @@ class TvMediaBridgeAdversarialTest {
         val hostileQuery = "<script>alert('xss')</script>; rm -rf /data; \u0000"
         val resolved = TvMediaBridge.resolveCanonicalVideoUri(hostileQuery)
         assertTrue(resolved.startsWith("https://www.youtube.com/"))
+    }
+
+    @Test
+    fun `CinemaBeamPlanner routes multi-source streams across disparate TV platforms safely`() {
+        // Prime Video routing
+        val primeFire = CinemaBeamPlanner.buildAdbBeamCommand("Fallout", isFireTv = true, source = CinemaSource.PRIME_VIDEO)
+        assertTrue(primeFire.contains("com.amazon.avod"))
+        assertTrue(primeFire.contains("watch.amazon.com"))
+
+        val primeGoogle = CinemaBeamPlanner.buildAdbBeamCommand("Fallout", isFireTv = false, source = CinemaSource.PRIME_VIDEO)
+        assertTrue(primeGoogle.contains("com.amazon.amazonvideo.livingroom"))
+
+        // Pluto TV routing
+        val plutoFire = CinemaBeamPlanner.buildAdbBeamCommand("Star Trek", isFireTv = true, source = CinemaSource.PLUTO_TV)
+        assertTrue(plutoFire.contains("tv.pluto.android"))
+        assertTrue(plutoFire.contains("pluto.tv/search/"))
+
+        // Direct Stream routing
+        val directStream = CinemaBeamPlanner.buildAdbBeamCommand("https://example.com/movie.mp4", isFireTv = false, source = CinemaSource.DIRECT_URL)
+        assertTrue(directStream.contains("-t 'video/*'"))
+        assertTrue(directStream.contains("https://example.com/movie.mp4"))
     }
 }

@@ -216,6 +216,8 @@ class LgWebOsProtocol(private val client: OkHttpClient? = null) : SmartTvProtoco
         RemoteKey.POWER -> "ssap://system/turnOff"
         RemoteKey.HOME -> "ssap://system.launcher/open"
         RemoteKey.PLAY_PAUSE -> "ssap://media.controls/play"
+        RemoteKey.PLAY -> "ssap://media.controls/play"
+        RemoteKey.PAUSE -> "ssap://media.controls/pause"
         RemoteKey.REWIND -> "ssap://media.controls/rewind"
         RemoteKey.FAST_FORWARD -> "ssap://media.controls/fastForward"
         RemoteKey.SELECT, RemoteKey.UP, RemoteKey.DOWN, RemoteKey.LEFT, RemoteKey.RIGHT -> "ssap://com.webos.service.ime/sendEnterKey"

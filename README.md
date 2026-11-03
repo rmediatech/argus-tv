@@ -2,8 +2,8 @@
 
 <div align="center">
 
-[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.1.0)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.1.0/argus-v1.1.0.apk)
-[![Version](https://img.shields.io/badge/Version-v1.1.0-blue?style=for-the-badge)](CHANGELOG.md)
+[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.2.0)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.2.0/argus-v1.2.0.apk)
+[![Version](https://img.shields.io/badge/Version-v1.2.0-blue?style=for-the-badge)](CHANGELOG.md)
 [![RMediaTech Official](https://img.shields.io/badge/RMediaTech-Official%20Fleet-FFB300?style=for-the-badge&logo=shield&logoColor=black)](https://rmediatech.com)
 [![Zero Ads](https://img.shields.io/badge/Zero--Ads-100%25%20Private-00F5FF?style=for-the-badge)](https://rmediatech.com)
 

@@ -2,6 +2,7 @@ package com.rmediatech.sovereignremote.protocols
 
 import android.content.Context
 import android.util.Log
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.DeviceType
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -109,6 +110,8 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.VOLUME_DOWN -> 25 to 114
             RemoteKey.MUTE -> 164 to 113
             RemoteKey.PLAY_PAUSE -> 85 to 164
+            RemoteKey.PLAY -> 126 to 207
+            RemoteKey.PAUSE -> 127 to 201
             RemoteKey.REWIND -> 89 to 168
             RemoteKey.FAST_FORWARD -> 90 to 208
             RemoteKey.INFO -> 176 to 139 // Android KEYCODE_SETTINGS (Quick Settings / Options on Fire TV)
@@ -226,10 +229,14 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         }
     }
 
-    override suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun launchMediaUri(
+        device: RemoteDevice,
+        uriOrQuery: String,
+        source: CinemaSource
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val dadb = getDadb(device.ipAddress, 5555)
-            val cmd = TvMediaBridge.buildAdbMediaBeamCommand(uriOrQuery, isFireTv = true)
+            val cmd = CinemaBeamPlanner.buildAdbBeamCommand(uriOrQuery, isFireTv = true, source = source)
             dadb.shell(cmd)
             Result.success(Unit)
         } catch (e: Exception) {

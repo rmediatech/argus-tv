@@ -72,13 +72,9 @@ object TvAutoHealingSentinel {
         return when (zone) {
             HealingZone.GREEN -> AutoHealDecision.LockstepIntact
             HealingZone.YELLOW -> {
-                if (driftMs > 0) {
-                    // Leader is slightly ahead: hold leader for the drift delta
-                    AutoHealDecision.SlipstreamHold(leaderState.appPackage, driftMs.coerceIn(500L, YELLOW_ZONE_MAX_MS))
-                } else {
-                    // Follower is slightly ahead: hold follower for the drift delta
-                    AutoHealDecision.SlipstreamHold(followerState.appPackage, kotlin.math.abs(driftMs).coerceIn(500L, YELLOW_ZONE_MAX_MS))
-                }
+                val holdDuration = kotlin.math.abs(driftMs).coerceIn(400L, YELLOW_ZONE_MAX_MS)
+                val targetPkg = if (driftMs > 0) leaderState.appPackage else followerState.appPackage
+                AutoHealDecision.SlipstreamHold(targetPkg, holdDuration)
             }
             HealingZone.RED -> {
                 AutoHealDecision.HardReconciliation(leaderPositionMs = leaderLiveMs, driftMs = driftMs)
@@ -132,27 +128,29 @@ object TvAutoHealingSentinel {
                     )
                     statusMessage = "Auto-aligning ${targetDev.name} (absorbed ${decision.holdDurationMs}ms drift)"
                     // Pause target TV
-                    registry.sendKey(targetDev, RemoteKey.PLAY_PAUSE)
+                    registry.sendKey(targetDev, RemoteKey.PAUSE)
                     delay(decision.holdDurationMs)
                     // Resume target TV into perfect lockstep
-                    registry.sendKey(targetDev, RemoteKey.PLAY_PAUSE)
+                    registry.sendKey(targetDev, RemoteKey.PLAY)
                 }
             }
             is AutoHealDecision.MicroSeekFollower -> {
                 statusMessage = "Micro-seeking ${followerDevice.name} to lockstep"
             }
             is AutoHealDecision.HardReconciliation -> {
-                if (canHealDevice(followerDevice.ipAddress, nowMs)) {
-                    recordHealExecution(followerDevice.ipAddress, nowMs)
+                val targetDev = if (driftMs > 0) leaderDevice else followerDevice
+                if (canHealDevice(targetDev.ipAddress, nowMs)) {
+                    recordHealExecution(targetDev.ipAddress, nowMs)
+                    val hold = kotlin.math.abs(decision.driftMs).coerceIn(1000L, 4000L)
                     SovereignLogger.w(
                         SovereignLogger.Category.PROTOCOL,
-                        "Auto-Healing: Hard reconciliation on ${followerDevice.name}. Drift: ${decision.driftMs}ms"
+                        "Auto-Healing: Hard reconciliation hold on ${targetDev.name} for ${hold}ms (Drift: ${decision.driftMs}ms)"
                     )
-                    statusMessage = "Auto-reconciled ${followerDevice.name} to 00:00 buffer lock"
-                    // Gracefully re-beam / pause-align follower to leader position
-                    registry.sendKey(followerDevice, RemoteKey.PLAY_PAUSE)
-                    delay(800)
-                    registry.sendKey(followerDevice, RemoteKey.PLAY_PAUSE)
+                    statusMessage = "Auto-reconciled ${targetDev.name} (held ${hold}ms)"
+                    // Hold fast TV to allow lagging TV to catch up
+                    registry.sendKey(targetDev, RemoteKey.PAUSE)
+                    delay(hold)
+                    registry.sendKey(targetDev, RemoteKey.PLAY)
                 }
             }
             is AutoHealDecision.MuteEquilibriumRequired -> {

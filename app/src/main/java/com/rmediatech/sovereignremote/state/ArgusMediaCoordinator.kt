@@ -6,10 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.rmediatech.sovereignremote.logging.SovereignLogger
+import com.rmediatech.sovereignremote.model.CinemaSource
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.PlaybackStatus
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import com.rmediatech.sovereignremote.protocols.CinemaBeamPlanner
 import com.rmediatech.sovereignremote.protocols.TvAutoHealingSentinel
 import com.rmediatech.sovereignremote.protocols.TvMediaBridge
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
@@ -140,8 +142,8 @@ class ArgusMediaCoordinator(
     }
 
     /**
-     * Zero-lag parallel transport fanout: when user presses Play/Pause, Rewind, or Fast-Forward
-     * while Watch Party is active, dispatches immediately to all synced follower TVs in parallel.
+     * Zero-lag parallel transport & volume fanout: when user presses Play/Pause, Rewind, Fast-Forward,
+     * Volume Up/Down, or Mute while Watch Party is active, dispatches immediately to all synced follower TVs.
      */
     fun fanoutTransportKeyIfWatchParty(
         key: RemoteKey,
@@ -149,7 +151,9 @@ class ArgusMediaCoordinator(
         allDevices: List<RemoteDevice>
     ) {
         if (watchPartyIps.isEmpty()) return
-        if (key != RemoteKey.PLAY_PAUSE && key != RemoteKey.REWIND && key != RemoteKey.FAST_FORWARD) return
+        if (key != RemoteKey.PLAY_PAUSE && key != RemoteKey.PLAY && key != RemoteKey.PAUSE &&
+            key != RemoteKey.REWIND && key != RemoteKey.FAST_FORWARD &&
+            key != RemoteKey.VOLUME_UP && key != RemoteKey.VOLUME_DOWN && key != RemoteKey.MUTE) return
 
         val followers = allDevices.filter {
             it.ipAddress != primaryDevice.ipAddress && watchPartyIps.contains(it.ipAddress)
@@ -167,12 +171,14 @@ class ArgusMediaCoordinator(
     }
 
     /**
-     * Beams a movie search or URL simultaneously to the primary TV AND all active Watch Party TVs.
+     * Beams a movie search or URL simultaneously to the primary TV AND all active Watch Party TVs,
+     * overriding multi-account profile friction during pre-flight and enforcing lockstep synchronization.
      */
     fun beamMediaToTv(
         device: RemoteDevice?,
         queryOrUrl: String,
-        allDevices: List<RemoteDevice> = emptyList()
+        allDevices: List<RemoteDevice> = emptyList(),
+        source: CinemaSource = CinemaSource.YOUTUBE
     ) {
         val target = device ?: run {
             Toast.makeText(context, "Select a TV first", Toast.LENGTH_SHORT).show()
@@ -186,47 +192,52 @@ class ArgusMediaCoordinator(
         }
         val allTargets = listOf(target) + followers
         val label = if (followers.isEmpty()) target.name else "${allTargets.size} Watch Party TVs"
-        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Beaming media '$clean' -> $label")
-        Toast.makeText(context, "Beaming to $label...", Toast.LENGTH_SHORT).show()
+        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Beaming [${source.displayName}] '$clean' -> $label")
+        Toast.makeText(context, "Beaming ${source.displayName} to $label...", Toast.LENGTH_SHORT).show()
 
         scope.launch {
-            // 1. Resolve canonical direct stream URL so all TVs play the identical stream
-            val canonicalUri = TvMediaBridge.resolveCanonicalVideoUri(clean)
-            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Resolved canonical video: '$canonicalUri'")
+            // 1. Resolve canonical stream URI per source
+            val canonicalUri = CinemaBeamPlanner.resolveMediaUri(clean, source)
+            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Resolved [${source.displayName}] canonical: '$canonicalUri'")
 
             val results = allTargets.map { dev ->
-                async(Dispatchers.IO) { registry.launchMediaUri(dev, canonicalUri) }
+                async(Dispatchers.IO) { registry.launchMediaUri(dev, canonicalUri, source) }
             }.awaitAll()
             if (results.first().isSuccess) {
-                if (followers.isNotEmpty()) {
-                    // Auto-confirm profile if stalled on account picker
-                    delay(1200)
+                val hasFireTv = allTargets.any { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }
+                if (followers.isNotEmpty() || hasFireTv) {
+                    // Pre-Flight Gate: Hold early starters (e.g. Google TV) at 00:01 while slower TVs (Fire TV Cobalt) boot
+                    delay(2600)
                     allTargets.map { dev ->
                         async(Dispatchers.IO) {
                             val state = registry.queryNowPlaying(dev)
-                            if (state == null || state.status != PlaybackStatus.PLAYING) {
+                            if (state?.status == PlaybackStatus.PLAYING) {
+                                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight gate: Holding early starter ${dev.name} at starting line")
+                                registry.sendKey(dev, RemoteKey.PAUSE)
+                            } else if (dev.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV) {
                                 registry.sendKey(dev, RemoteKey.SELECT)
                             }
                         }
                     }.awaitAll()
 
-                    // Auto-Lockstep: State-aware buffer lock and synchronized parallel release
-                    delay(2500)
-                    allTargets.map { dev ->
+                    // Slower TV (Fire TV) buffers and reaches 00:01: pause it too
+                    delay(1500)
+                    allTargets.filter { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }.map { dev ->
                         async(Dispatchers.IO) {
                             val s = registry.queryNowPlaying(dev)
                             if (s?.status == PlaybackStatus.PLAYING) {
-                                registry.sendKey(dev, RemoteKey.PLAY_PAUSE)
+                                registry.sendKey(dev, RemoteKey.PAUSE)
                             }
                         }
                     }.awaitAll()
-                    delay(1500)
+
+                    // GREEN LIGHT DROP: Both TVs pre-buffered and held at the starting line.
+                    // Fire simultaneous parallel release with explicit PLAY so all screens race forward in lockstep!
+                    delay(800)
                     allTargets.map { dev ->
                         async(Dispatchers.IO) {
-                            val s = registry.queryNowPlaying(dev)
-                            if (s == null || s.status == PlaybackStatus.PAUSED) {
-                                registry.sendKey(dev, RemoteKey.PLAY_PAUSE)
-                            }
+                            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight green flag: Parallel release -> ${dev.name} (${dev.ipAddress})")
+                            registry.sendKey(dev, RemoteKey.PLAY)
                         }
                     }.awaitAll()
                 } else {

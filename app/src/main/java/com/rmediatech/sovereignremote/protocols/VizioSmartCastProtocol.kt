@@ -234,6 +234,8 @@ class VizioSmartCastProtocol(
         RemoteKey.VOLUME_DOWN -> Pair(5, 1)
         RemoteKey.MUTE -> Pair(5, 2)
         RemoteKey.PLAY_PAUSE -> Pair(2, 2)
+        RemoteKey.PLAY -> Pair(2, 3)
+        RemoteKey.PAUSE -> Pair(2, 4)
         RemoteKey.REWIND -> Pair(2, 0)
         RemoteKey.FAST_FORWARD -> Pair(2, 1)
         RemoteKey.INFO -> Pair(4, 13)
