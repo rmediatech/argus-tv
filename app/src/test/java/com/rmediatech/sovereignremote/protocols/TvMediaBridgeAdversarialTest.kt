@@ -65,6 +65,9 @@ class TvMediaBridgeAdversarialTest {
         assertFalse("Command substitution must be stripped", cmd.contains("$("))
         assertFalse("Backticks must be stripped", cmd.contains("`"))
         assertFalse("Pipe injection must be stripped", cmd.contains("| cat"))
+
+        val googleTvCmd = TvMediaBridge.buildAdbMediaBeamCommand("Needful Things", isFireTv = false)
+        assertTrue(googleTvCmd.contains("com.google.android.youtube.tv/com.google.android.apps.youtube.tv.activity.ShellActivity"))
     }
 
     @Test
