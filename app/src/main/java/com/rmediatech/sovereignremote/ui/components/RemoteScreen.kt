@@ -103,7 +103,16 @@ fun RemoteScreen(
                 ThemeLayoutType.STEALTH_COLUMNS -> StealthColumnsController(onSendKey, ::performHaptic)
             }
 
-            // 4. PLAYBACK CONTROLS & VOLUME/MUTE BAR
+            // 4. WATCH PARTY SHIELD STATUS (IF ACTIVE)
+            mediaCoordinator?.healingSnapshot?.let { snapshot ->
+                WatchPartyShieldChip(
+                    zone = snapshot.zone,
+                    statusText = snapshot.statusMessage,
+                    screenCount = (mediaCoordinator.watchPartyIps.size) + 1
+                )
+            }
+
+            // 5. PLAYBACK CONTROLS & VOLUME/MUTE BAR
             PlaybackVolumeBar(
                 nowPlaying = mediaCoordinator?.nowPlaying,
                 watchPartyCount = mediaCoordinator?.watchPartyIps?.size ?: 0,

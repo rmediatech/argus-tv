@@ -9,6 +9,7 @@ import com.rmediatech.sovereignremote.logging.SovereignLogger
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import com.rmediatech.sovereignremote.protocols.TvAutoHealingSentinel
 import com.rmediatech.sovereignremote.protocols.TvMediaBridge
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import kotlinx.coroutines.*
@@ -31,6 +32,9 @@ class ArgusMediaCoordinator(
         private set
 
     var followerTelemetry by mutableStateOf<Map<String, NowPlayingState>>(emptyMap())
+        private set
+
+    var healingSnapshot by mutableStateOf<TvAutoHealingSentinel.SentinelTelemetrySnapshot?>(null)
         private set
 
     private var telemetryJob: Job? = null
@@ -72,23 +76,37 @@ class ArgusMediaCoordinator(
                     withContext(Dispatchers.Main) {
                         nowPlaying = null
                         followerTelemetry = emptyMap()
+                        healingSnapshot = null
                     }
                 } else {
                     val state = registry.queryNowPlaying(activeDevice)
                     val followers = allDevs.filter {
                         it.ipAddress != activeDevice.ipAddress && watchPartyIps.contains(it.ipAddress)
                     }
-                    val fStates = if (state != null && followers.isNotEmpty()) {
-                        TvMediaBridge.syncWatchPartyFollowers(state, followers, registry)
-                    } else {
-                        emptyMap()
+                    val fStates = mutableMapOf<String, NowPlayingState>()
+                    var latestSnapshot: TvAutoHealingSentinel.SentinelTelemetrySnapshot? = null
+
+                    if (state != null && followers.isNotEmpty()) {
+                        fStates.putAll(TvMediaBridge.syncWatchPartyFollowers(state, followers, registry))
+                        val firstFollower = followers.first()
+                        val followerState = fStates[firstFollower.ipAddress]
+                        if (followerState != null) {
+                            latestSnapshot = TvAutoHealingSentinel.executeClosedLoopHealing(
+                                leaderDevice = activeDevice,
+                                leaderState = state,
+                                followerDevice = firstFollower,
+                                followerState = followerState,
+                                registry = registry
+                            )
+                        }
                     }
                     withContext(Dispatchers.Main) {
                         nowPlaying = state
                         followerTelemetry = fStates
+                        healingSnapshot = latestSnapshot
                     }
                 }
-                delay(4000)
+                delay(3000)
             }
         }
     }
