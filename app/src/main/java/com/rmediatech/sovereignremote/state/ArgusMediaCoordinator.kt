@@ -217,41 +217,8 @@ class ArgusMediaCoordinator(
                 async(Dispatchers.IO) { registry.launchMediaUri(dev, canonicalUri, source) }
             }.awaitAll()
             if (results.first().isSuccess) {
-                val hasFireTv = allTargets.any { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }
-                if (followers.isNotEmpty() || hasFireTv) {
-                    // Pre-Flight Step 1: Allow Cobalt Webview (Fire TV) / Leanback (Google TV) 3000ms to mount
-                    delay(3000)
-
-                    // For Fire TV, explicitly send DPAD_CENTER (SELECT) to bypass any multi-account "Who's watching?" picker
-                    allTargets.filter { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }.forEach { dev ->
-                        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight: Dispatching SELECT profile bypass to ${dev.name}")
-                        registry.sendKey(dev, RemoteKey.SELECT)
-                    }
-
-                    // Pre-Flight Step 2: Hold all active early starters at the starting line (PAUSE)
-                    delay(1200)
-                    allTargets.map { dev ->
-                        async(Dispatchers.IO) {
-                            val state = registry.queryNowPlaying(dev)
-                            if (state?.status == PlaybackStatus.PLAYING) {
-                                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight gate: Holding early starter ${dev.name} at starting line")
-                                registry.sendKey(dev, RemoteKey.PAUSE)
-                            }
-                        }
-                    }.awaitAll()
-
-                    // GREEN LIGHT DROP: Both TVs pre-buffered and held at the starting line.
-                    // Fire simultaneous parallel release with explicit PLAY so all screens race forward in lockstep!
-                    delay(800)
-                    allTargets.map { dev ->
-                        async(Dispatchers.IO) {
-                            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight green flag: Parallel release -> ${dev.name} (${dev.ipAddress})")
-                            registry.sendKey(dev, RemoteKey.PLAY)
-                        }
-                    }.awaitAll()
-                } else {
-                    delay(2500)
-                }
+                // Allow hardware renderers to acquire media sessions naturally without blind pause/play fighting
+                delay(2500)
                 val refreshed = withContext(Dispatchers.IO) { registry.queryNowPlaying(target) }
                 nowPlaying = refreshed
             } else {
