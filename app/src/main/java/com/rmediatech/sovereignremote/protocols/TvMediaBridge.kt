@@ -165,7 +165,11 @@ object TvMediaBridge {
         }
 
         val ytPkg = if (isFireTv) "com.amazon.firetv.youtube" else "com.google.android.youtube.tv"
-        val ytActivity = "$ytPkg/dev.cobalt.app.MainActivity"
+        val ytActivity = if (isFireTv) {
+            "$ytPkg/dev.cobalt.app.MainActivity"
+        } else {
+            "$ytPkg/com.google.android.apps.youtube.tv.activity.ShellActivity"
+        }
 
         return buildString {
             append("input keyevent 224; ")
@@ -173,6 +177,7 @@ object TvMediaBridge {
             append("am force-stop com.instagram.airwave 2>/dev/null || true; ")
             append("am force-stop $ytPkg 2>/dev/null || true; ")
             append("am start -a android.intent.action.VIEW -d '$targetUrl' $ytActivity ")
+            append("|| am start -a android.intent.action.VIEW -d '$targetUrl' $ytPkg ")
             append("|| am start -a android.intent.action.VIEW -d '$targetUrl'")
         }
     }
