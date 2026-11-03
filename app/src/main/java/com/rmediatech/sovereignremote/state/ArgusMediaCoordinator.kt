@@ -219,26 +219,22 @@ class ArgusMediaCoordinator(
             if (results.first().isSuccess) {
                 val hasFireTv = allTargets.any { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }
                 if (followers.isNotEmpty() || hasFireTv) {
-                    // Pre-Flight Gate: Hold early starters (e.g. Google TV) at 00:01 while slower TVs (Fire TV Cobalt) boot
-                    delay(2600)
+                    // Pre-Flight Step 1: Allow Cobalt Webview (Fire TV) / Leanback (Google TV) 3000ms to mount
+                    delay(3000)
+
+                    // For Fire TV, explicitly send DPAD_CENTER (SELECT) to bypass any multi-account "Who's watching?" picker
+                    allTargets.filter { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }.forEach { dev ->
+                        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight: Dispatching SELECT profile bypass to ${dev.name}")
+                        registry.sendKey(dev, RemoteKey.SELECT)
+                    }
+
+                    // Pre-Flight Step 2: Hold all active early starters at the starting line (PAUSE)
+                    delay(1200)
                     allTargets.map { dev ->
                         async(Dispatchers.IO) {
                             val state = registry.queryNowPlaying(dev)
                             if (state?.status == PlaybackStatus.PLAYING) {
                                 SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight gate: Holding early starter ${dev.name} at starting line")
-                                registry.sendKey(dev, RemoteKey.PAUSE)
-                            } else if (dev.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV) {
-                                registry.sendKey(dev, RemoteKey.SELECT)
-                            }
-                        }
-                    }.awaitAll()
-
-                    // Slower TV (Fire TV) buffers and reaches 00:01: pause it too
-                    delay(1500)
-                    allTargets.filter { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }.map { dev ->
-                        async(Dispatchers.IO) {
-                            val s = registry.queryNowPlaying(dev)
-                            if (s?.status == PlaybackStatus.PLAYING) {
                                 registry.sendKey(dev, RemoteKey.PAUSE)
                             }
                         }

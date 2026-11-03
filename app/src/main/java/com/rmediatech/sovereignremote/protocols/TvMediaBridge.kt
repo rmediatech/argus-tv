@@ -75,8 +75,13 @@ object TvMediaBridge {
             val speed = stateMatch.groupValues[3].toFloatOrNull() ?: 1.0f
             val updatedMs = stateMatch.groupValues[4].toLongOrNull() ?: 0L
 
-            val status = PlaybackStatus.fromAndroidStateCode(stateCode)
-            if (status == PlaybackStatus.IDLE && rawPos < 0L) continue
+            val rawStatus = PlaybackStatus.fromAndroidStateCode(stateCode)
+            if (rawStatus == PlaybackStatus.IDLE && rawPos < 0L) continue
+
+            // A session with negative position and zero speed is buffering/uninitialized, not playing
+            val status = if (rawStatus == PlaybackStatus.PLAYING && rawPos < 0L && speed == 0.0f) {
+                PlaybackStatus.BUFFERING
+            } else rawStatus
 
             val descRaw = DESCRIPTION_REGEX.find(block)?.groupValues?.get(1)?.trim().orEmpty()
             val cleanedTitle = descRaw
