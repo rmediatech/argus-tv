@@ -144,6 +144,17 @@ class ArgusMediaCoordinator(
     }
 
     /**
+     * Preserves Watch Party connectivity when user switches primary TV focus in the dropdown:
+     * swaps the old leader into followers and promotes the new focus TV to leader.
+     */
+    fun swapLeaderIfWatchParty(oldLeaderIp: String, newLeaderIp: String) {
+        if (watchPartyIps.contains(newLeaderIp)) {
+            watchPartyIps = (watchPartyIps - newLeaderIp) + oldLeaderIp
+            SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "WatchParty leader swapped: $oldLeaderIp -> $newLeaderIp (followers: $watchPartyIps)")
+        }
+    }
+
+    /**
      * Zero-lag parallel transport & volume fanout: when user presses Play/Pause, Rewind, Fast-Forward,
      * Volume Up/Down, or Mute while Watch Party is active, dispatches immediately to all synced follower TVs.
      */

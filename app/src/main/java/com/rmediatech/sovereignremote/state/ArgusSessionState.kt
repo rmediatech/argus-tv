@@ -74,7 +74,11 @@ class ArgusSessionState(
         prefs.edit().putString("active_theme_preset", preset.id).apply()
     }
     fun selectDevice(device: RemoteDevice) {
+        val old = currentDevice
         currentDevice = device
+        if (old != null && old.ipAddress != device.ipAddress) {
+            mediaCoordinator.swapLeaderIfWatchParty(old.ipAddress, device.ipAddress)
+        }
         SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Device selected: [${device.deviceType}] ${device.name} (${device.ipAddress}:${device.port})")
         ArgusSessionHelper.persistSelectedDevice(prefs, device)
         startLivenessMonitoring()
@@ -244,9 +248,7 @@ class ArgusSessionState(
             if (!targetMac.isNullOrBlank()) {
                 if (device.macAddress == null) {
                     device = device.copy(macAddress = targetMac)
-                    currentDevice = device
-                    discoveredDevices = DeviceSerializer.merge(discoveredDevices, listOf(device))
-                    persistDevices(discoveredDevices)
+                    currentDevice = device; discoveredDevices = DeviceSerializer.merge(discoveredDevices, listOf(device)); persistDevices(discoveredDevices)
                 }
                 scope.launch(Dispatchers.IO) { WakeOnLan.wake(targetMac, device.ipAddress, context) }
             }
@@ -281,9 +283,7 @@ class ArgusSessionState(
                 }
                 scope.launch { delay(800); isAckActive = false }
             }
-            if (key == RemoteKey.POWER) {
-                scope.launch { ArgusSessionHelper.pollPowerWakeLiveness(device) { livenessState = it } }
-            }
+            if (key == RemoteKey.POWER) scope.launch { ArgusSessionHelper.pollPowerWakeLiveness(device) { livenessState = it } }
         }
     }
 

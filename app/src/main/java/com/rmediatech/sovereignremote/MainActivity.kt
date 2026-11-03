@@ -30,6 +30,22 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (::sessionState.isInitialized) {
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                    sessionState.sendKey(com.rmediatech.sovereignremote.model.RemoteKey.VOLUME_UP)
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    sessionState.sendKey(com.rmediatech.sovereignremote.model.RemoteKey.VOLUME_DOWN)
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

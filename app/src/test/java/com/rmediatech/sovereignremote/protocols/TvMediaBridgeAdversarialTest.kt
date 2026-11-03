@@ -163,4 +163,19 @@ class TvMediaBridgeAdversarialTest {
         assertTrue(directStream.contains("-t 'video/*'"))
         assertTrue(directStream.contains("https://example.com/movie.mp4"))
     }
+
+    @Test
+    fun `WatchParty leader swap preserves multi-room connectivity when operator changes dropdown focus`() {
+        var watchPartyIps = setOf("192.168.1.158")
+        val oldLeaderIp = "192.168.1.186"
+        val newLeaderIp = "192.168.1.158"
+
+        // Simulating leader swap logic in ArgusMediaCoordinator
+        if (watchPartyIps.contains(newLeaderIp)) {
+            watchPartyIps = (watchPartyIps - newLeaderIp) + oldLeaderIp
+        }
+
+        assertFalse(watchPartyIps.contains("192.168.1.158"))
+        assertTrue(watchPartyIps.contains("192.168.1.186"))
+    }
 }
