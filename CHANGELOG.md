@@ -5,6 +5,14 @@ All notable changes to **Argus (Android)** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-03
+
+### Added
+- **Sovereign Digital Twin TV Crucible (`SovereignTvTwin.kt`)**: In-memory, zero-cloud TV hardware simulation harness with strict AutoCloseable RAII semantics. Emulates live TCP wire protocols across Roku ECP, Samsung Tizen REST/WebSocket, and Android/Fire TV ADB command streams on ephemeral dynamic ports with zero socket or background resource leaks.
+- **End-to-End User Flow Hardware Test (`SovereignUserFlowHardwareCrucibleTest.kt`)**: Automated test reproducing the exact physical living room user sequence: multi-device discovery, Watch Party engagement, parallel beam dispatch, physical volume rocker fanout, dropdown leader swapping, and clean automatic teardown.
+- **Explicit `STOP PARTY` Control (`WatchPartyShieldChip.kt`)**: Prominent tactile stop button embedded directly into the active Watch Party Shield HUD chip, providing immediate, single-tap session termination.
+- **Universal TV-Agnostic Factory Setting Restoration (`ArgusMediaCoordinator.stopWatchParty()`)**: Guaranteed seamless teardown across all linked hardware. Automatically restores manufacturer defaults (neutralizes `stay_on_while_plugged_in` to 0 on Fire TV/Google TV, releases all display wake locks, and clears follower telemetry) leaving zero residual foreign state.
+
 ## [1.2.1] - 2026-11-03
 
 ### Fixed
