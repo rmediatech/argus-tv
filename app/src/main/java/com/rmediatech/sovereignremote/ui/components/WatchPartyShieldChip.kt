@@ -95,37 +95,50 @@ fun WatchPartyShieldChip(
             // Screen count badge & Stop Party button
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(SurfaceElevated)
-                        .border(1.dp, BorderSubtle, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SurfaceElevated.copy(alpha = 0.9f))
+                        .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = "$screenCount SCREENS LINKED",
                         color = TextSecondary,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
                     )
                 }
                 if (onStopParty != null) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(CrimsonRed.copy(alpha = 0.2f))
-                            .border(1.dp, CrimsonRed.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CrimsonSubtle)
+                            .border(1.dp, CrimsonRed.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
                             .clickable { onStopParty() }
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = "STOP PARTY",
-                            color = CrimsonRed,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(CrimsonRed)
+                            )
+                            Text(
+                                text = "END PARTY",
+                                color = CrimsonRed,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
+                            )
+                        }
                     }
                 }
             }

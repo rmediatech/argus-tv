@@ -172,7 +172,7 @@ fun CinemaBeamDialog(
             }
 
             // 3. MULTI-ROOM WATCH PARTY SYNC
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -182,37 +182,76 @@ fun CinemaBeamDialog(
                         text = "MULTI-ROOM WATCH PARTY SYNC",
                         color = palette.textSecondary,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
                     )
+                    Text(
+                        text = "Scan Wi-Fi 🔄",
+                        color = palette.primaryAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onScanRequested() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                // Active Watch Party Status Banner & End Party Button
+                if (watchPartyIps.isNotEmpty()) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.surfaceElevated)
+                            .border(1.dp, com.rmediatech.sovereignremote.ui.theme.EmeraldGreen.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (watchPartyIps.isNotEmpty()) {
-                            Text(
-                                text = "STOP PARTY 🛑",
-                                color = com.rmediatech.sovereignremote.ui.theme.CrimsonRed,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        onStopParty()
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .size(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(com.rmediatech.sovereignremote.ui.theme.EmeraldGreen)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "WATCH PARTY ACTIVE",
+                                    color = palette.textPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.6.sp
+                                )
+                                Text(
+                                    text = "${watchPartyIps.size + 1} Displays Synchronized",
+                                    color = com.rmediatech.sovereignremote.ui.theme.EmeraldGreen,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(com.rmediatech.sovereignremote.ui.theme.CrimsonSubtle)
+                                .border(1.dp, com.rmediatech.sovereignremote.ui.theme.CrimsonRed.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    onStopParty()
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "END PARTY",
+                                color = com.rmediatech.sovereignremote.ui.theme.CrimsonRed,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
                             )
                         }
-                        Text(
-                            text = "Scan Wi-Fi 🔄",
-                            color = palette.primaryAccent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { onScanRequested() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
                     }
                 }
 
