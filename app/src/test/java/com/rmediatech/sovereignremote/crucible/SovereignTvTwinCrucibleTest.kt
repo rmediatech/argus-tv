@@ -258,7 +258,7 @@ class SovereignTvTwinCrucibleTest {
     }
 
     @Test
-    fun testAdaptiveSourceInteraction_PlutoTvFansOutDpad_YouTubeRestrictsDpadUnlessToggled() = kotlinx.coroutines.test.runTest {
+    fun testWatchPartyUniversalKeyParity_DpadAndMediaBroadcastToAllFollowers() = kotlinx.coroutines.test.runTest {
         val app = android.app.Application()
         val registry = com.rmediatech.sovereignremote.protocols.TvProtocolRegistry(context = null)
         val gtv = VirtualTvHardwareNode("gtv_leader", "Google TV Living Room", DeviceType.GOOGLE_TV, "192.168.1.186")
@@ -276,6 +276,7 @@ class SovereignTvTwinCrucibleTest {
         // 1. Link Watch Party
         coordinator.toggleWatchPartyDevice(ftv.ip, allDevs, leaderIp = gtv.ip)
         testScheduler.runCurrent()
+        assertTrue("Watch Party must have Fire TV linked", coordinator.watchPartyIps.contains(ftv.ip))
 
         // 2. Beam Pluto TV (Interactive Guide source)
         val plutoJob = coordinator.beamMediaToTv(gtv.toRemoteDevice(), "", allDevs, com.rmediatech.sovereignremote.model.CinemaSource.PLUTO_TV)
@@ -283,40 +284,43 @@ class SovereignTvTwinCrucibleTest {
         testScheduler.runCurrent()
 
         assertEquals("Active source must be Pluto TV", com.rmediatech.sovereignremote.model.CinemaSource.PLUTO_TV, coordinator.activeSource)
-        assertTrue("Pluto TV must be classified as interactive guide", coordinator.activeSource?.isInteractiveGuide == true)
 
-        // 3. User navigates channel guide with D-pad (DOWN and SELECT)
+        // 3. User navigates channel guide with D-pad (DOWN and SELECT) - lockstep fanout
         coordinator.fanoutKeyIfWatchParty(RemoteKey.DOWN, gtv.toRemoteDevice(), allDevs)
         coordinator.fanoutKeyIfWatchParty(RemoteKey.SELECT, gtv.toRemoteDevice(), allDevs)
         testScheduler.runCurrent()
 
-        // Follower MUST receive DOWN and SELECT in lockstep during live guide mode!
-        assertTrue("Fire TV follower must receive DOWN during interactive guide", ftv.commandLog.contains("KEY:DOWN"))
-        assertTrue("Fire TV follower must receive SELECT during interactive guide", ftv.commandLog.contains("KEY:SELECT"))
+        assertTrue("Fire TV follower must receive DOWN during watch party", ftv.commandLog.contains("KEY:DOWN"))
+        assertTrue("Fire TV follower must receive SELECT during watch party", ftv.commandLog.contains("KEY:SELECT"))
 
         // 4. Switch to YouTube (Searchable / Stream source)
         val ytJob = coordinator.beamMediaToTv(gtv.toRemoteDevice(), "Inception", allDevs, com.rmediatech.sovereignremote.model.CinemaSource.YOUTUBE)
         ytJob?.join()
         testScheduler.runCurrent()
 
-        assertFalse("YouTube is not an interactive guide", coordinator.activeSource?.isInteractiveGuide == true)
         val ftvKeysBefore = ftv.commandLog.count { it == "KEY:UP" }
 
-        // User taps UP during YouTube video
+        // 5. Universal D-pad parity: User navigates on YouTube - D-pad fans out across all party screens without manual toggling
         coordinator.fanoutKeyIfWatchParty(RemoteKey.UP, gtv.toRemoteDevice(), allDevs)
         testScheduler.runCurrent()
-        assertEquals("Fire TV must NOT receive D-pad during video stream by default", ftvKeysBefore, ftv.commandLog.count { it == "KEY:UP" })
+        assertEquals("Fire TV must receive UP in universal parity on YouTube", ftvKeysBefore + 1, ftv.commandLog.count { it == "KEY:UP" })
 
-        // 5. Explicitly toggle D-pad mirror on YouTube: now D-pad fans out!
-        coordinator.toggleDpadMirror()
-        coordinator.fanoutKeyIfWatchParty(RemoteKey.UP, gtv.toRemoteDevice(), allDevs)
+        // 6. Universal Media Transport & Audio parity
+        coordinator.fanoutKeyIfWatchParty(RemoteKey.PLAY_PAUSE, gtv.toRemoteDevice(), allDevs)
+        coordinator.fanoutKeyIfWatchParty(RemoteKey.VOLUME_UP, gtv.toRemoteDevice(), allDevs)
         testScheduler.runCurrent()
-        assertEquals("Fire TV must receive D-pad when mirror is explicitly toggled", ftvKeysBefore + 1, ftv.commandLog.count { it == "KEY:UP" })
+        assertTrue("Fire TV must receive PLAY_PAUSE in universal parity", ftv.commandLog.contains("KEY:PLAY_PAUSE"))
+        assertTrue("Fire TV must receive VOLUME_UP in universal parity", ftv.commandLog.contains("KEY:VOLUME_UP"))
 
-        // 6. Tear down
-        coordinator.stopWatchParty(allDevs)
+        // 7. Tear down Watch Party
+        coordinator.stopWatchParty(allDevs, gtv.toRemoteDevice())
         testScheduler.runCurrent()
-        assertNull("Active source must clear on stop", coordinator.activeSource)
-        assertFalse("D-pad mirror must reset on stop", coordinator.isDpadMirrorEnabled)
+        assertTrue("Watch Party IPs must be empty after stop", coordinator.watchPartyIps.isEmpty())
+
+        // 8. When Watch Party is stopped, key fanout ceases immediately - single device unicast only
+        val ftvDownCountBefore = ftv.commandLog.count { it == "KEY:DOWN" }
+        coordinator.fanoutKeyIfWatchParty(RemoteKey.DOWN, gtv.toRemoteDevice(), allDevs)
+        testScheduler.runCurrent()
+        assertEquals("Follower must NOT receive keys when Watch Party is inactive", ftvDownCountBefore, ftv.commandLog.count { it == "KEY:DOWN" })
     }
 }

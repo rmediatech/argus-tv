@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Every entry strictly complies with the Universal Sovereign Engineer-to-Engineer Standard (`SOVEREIGN-CHANGELOG-E2E-01`).
 
+## [1.3.4] - 2026-11-03
+
+### Added
+- **[Protocol/Interaction] Universal Watch Party Key & D-Pad Parity (`ArgusMediaCoordinator.kt`, `RemoteScreen.kt`)**:
+  - *Fleet Hardware Reality*: User testing across heterogeneous streaming apps (YouTube, Pluto TV, direct streams) demonstrated that conditional D-pad gating (restricting D-pad fanout unless an app was explicitly classified as an interactive guide) introduced friction and unpredictable control behavior. When an operator is in Watch Party mode controlling a room of displays, every directional keystroke (`UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`, `BACK`, `HOME`), transport action (`PLAY_PAUSE`, `REWIND`, `FAST_FORWARD`), and acoustic command (`VOLUME_UP`, `VOLUME_DOWN`, `MUTE`) must fan out across all linked displays in 100% lockstep parity.
+  - *Architectural Resolution*: Removed conditional source-gating from `fanoutKeyIfWatchParty()`. While Watch Party is active (`watchPartyIps.isNotEmpty()`), all user key inputs broadcast to all follower displays in parallel lockstep. As soon as Watch Party ends or is stopped (`watchPartyIps.isEmpty()`), key dispatch immediately and seamlessly reverts to pure unicast routing on the operator's currently selected device in the UI list, with zero ghost fanout or cross-device contamination.
+  - *Empirical Verification*: Verified in `SovereignTvTwinCrucibleTest.testWatchPartyUniversalKeyParity_DpadAndMediaBroadcastToAllFollowers` and `SovereignLivingRoomFleetCrucibleTest.testRapidSourceSwitching_PlutoGuideToYouTubeVideoToDirectHlsStream` asserting 100% lockstep key fanout during active party sessions and complete unicast isolation upon party cessation.
+
 ## [1.3.3] - 2026-11-03
 
 ### Added

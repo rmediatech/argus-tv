@@ -117,11 +117,11 @@ class SovereignLivingRoomFleetCrucibleTest {
         assertEquals(CinemaSource.YOUTUBE, coordinator.activeSource)
         assertFalse("YouTube is not an interactive guide", coordinator.activeSource?.isInteractiveGuide == true)
 
-        // D-pad must NOT fan out on YouTube by default
+        // D-pad fans out across all sources during Watch Party (Universal Parity)
         val followerDownCount = follower.commandLog.count { it == "KEY:DOWN" }
         coordinator.fanoutKeyIfWatchParty(RemoteKey.DOWN, leader.toRemoteDevice(), allDevices)
         testScheduler.runCurrent()
-        assertEquals("Follower must not receive D-pad on YouTube video stream", followerDownCount, follower.commandLog.count { it == "KEY:DOWN" })
+        assertEquals("Follower must receive D-pad in universal parity during Watch Party", followerDownCount + 1, follower.commandLog.count { it == "KEY:DOWN" })
 
         // 3. Switch to Direct Stream (HLS m3u8)
         val directJob = coordinator.beamMediaToTv(leader.toRemoteDevice(), "https://cinema.rmediatech.com/master.m3u8", allDevices, CinemaSource.DIRECT_URL)
@@ -133,8 +133,14 @@ class SovereignLivingRoomFleetCrucibleTest {
         val lastFollowerBeam = follower.commandLog.filter { it.startsWith("BEAM_URI:") }.last()
         assertTrue("Follower received direct stream URI", lastFollowerBeam.contains("master.m3u8"))
 
-        coordinator.stopWatchParty(allDevices)
+        coordinator.stopWatchParty(allDevices, leader.toRemoteDevice())
         testScheduler.runCurrent()
+
+        // When stopped, D-pad no longer fans out
+        val followerDownAfterStop = follower.commandLog.count { it == "KEY:DOWN" }
+        coordinator.fanoutKeyIfWatchParty(RemoteKey.DOWN, leader.toRemoteDevice(), allDevices)
+        testScheduler.runCurrent()
+        assertEquals("Follower must NOT receive keys after Watch Party teardown", followerDownAfterStop, follower.commandLog.count { it == "KEY:DOWN" })
     }
 
     @Test

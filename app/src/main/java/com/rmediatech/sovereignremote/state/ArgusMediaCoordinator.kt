@@ -240,10 +240,13 @@ class ArgusMediaCoordinator(
     }
 
     /**
-     * Adaptive Watch Party Key Fanout:
-     * - Transport (Play/Pause, Rewind, Fast-Forward) and Volume always fan out across all party TVs.
-     * - D-Pad & Navigation (Up, Down, Left, Right, Select, Back) fan out whenever the active source
-     *   is an interactive live guide (e.g. Pluto TV), or when D-pad mirroring is explicitly toggled by operator.
+     * Full-Parity Watch Party Key Fanout:
+     * When Watch Party is actively engaged, ALL directional navigation (D-pad UP/DOWN/LEFT/RIGHT,
+     * SELECT, BACK, HOME), media transport (PLAY/PAUSE, PLAY, PAUSE, REWIND, FAST_FORWARD),
+     * and acoustic controls (VOLUME_UP, VOLUME_DOWN, MUTE) broadcast in 100% lockstep parity across all
+     * linked party devices.
+     * When Watch Party is not active (or stopped), key dispatch seamlessly operates strictly
+     * unicast on the operator's currently selected device.
      */
     fun fanoutKeyIfWatchParty(
         key: RemoteKey,
@@ -251,19 +254,7 @@ class ArgusMediaCoordinator(
         allDevices: List<RemoteDevice>
     ) {
         if (watchPartyIps.isEmpty()) return
-
-        val isTransportOrVolume = key == RemoteKey.PLAY_PAUSE || key == RemoteKey.PLAY || key == RemoteKey.PAUSE ||
-            key == RemoteKey.REWIND || key == RemoteKey.FAST_FORWARD ||
-            key == RemoteKey.VOLUME_UP || key == RemoteKey.VOLUME_DOWN || key == RemoteKey.MUTE
-
-        val isDpadNav = key == RemoteKey.UP || key == RemoteKey.DOWN ||
-            key == RemoteKey.LEFT || key == RemoteKey.RIGHT ||
-            key == RemoteKey.SELECT || key == RemoteKey.BACK
-
-        val isInteractive = activeSource?.isInteractiveGuide == true
-        val shouldFanout = isTransportOrVolume || (isDpadNav && (isInteractive || isDpadMirrorEnabled))
-
-        if (!shouldFanout) return
+        if (key == RemoteKey.POWER) return // Power remains localized unless explicit party teardown
 
         val followers = allDevices.filter {
             it.ipAddress != primaryDevice.ipAddress && watchPartyIps.contains(it.ipAddress)
@@ -274,7 +265,7 @@ class ArgusMediaCoordinator(
         for (follower in followers) {
             TvMediaBridge.recordFollowerSync(follower.ipAddress, now)
             scope.launch {
-                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty lockstep fanout $key -> ${follower.name} (${follower.ipAddress}) [guideSync=$isInteractive, dpadMirror=$isDpadMirrorEnabled]")
+                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty lockstep parity fanout $key -> ${follower.name} (${follower.ipAddress})")
                 registry.sendKey(follower, key)
             }
         }
