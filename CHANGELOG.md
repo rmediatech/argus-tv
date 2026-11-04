@@ -5,6 +5,19 @@ All notable changes to **Argus (Android)** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-11-03
+
+### Added
+- **SST Natural Flagship Theme & Controller (`NaturalCircularController.kt`)**: Added the `SST_NATURAL` flagship mobile preset featuring deep obsidian slate surfaces (`#0B0F17`), velvet glass elevation (`#131926`), titanium rim borders (`#2B374E`), and luminous sapphire azure accents (`#38BDF8`). Features a thumb-optimized $236\text{dp}$ outer circular touch pad, $52\text{dp}$ directional zones, and an elevated $76\text{dp}$ central touch well with haptic tap feedback.
+- **Natural Ergonomic Touch Targets ($\ge 48\text{dp}$ Fitts's Law Standards)**: Standardized touch boundary geometry across `TacticalRoundButton` ($52\text{dp}$ circular glass containers), `PlaybackVolumeBar` ($50-52\text{dp}$ media transport buttons with smooth $14-16\text{dp}$ squircle radiuses), and `CinemaBeamDialog` cards.
+- **Mid-Party Search & Re-Beam Verification (`SovereignTvTwinCrucibleTest.kt`)**: Implemented `testMidPartySearchAndReBeam_FollowersMaintainSynchronization` asserting that streaming a new query while a Watch Party is actively playing fans out seamlessly to all follower displays in lockstep.
+
+### Fixed
+- **Two-Tier Autonomous Cobalt Profile-Picker Unmasking (`ArgusMediaCoordinator.kt` & `TvMediaBridge.kt`)**:
+  - *Fleet Hardware Reality*: In real-world multi-display environments (such as our physical Hisense Google TV and Amazon Fire TV 4K Max test bench), Amazon's Cobalt/Starboard YouTube runtime (`com.amazon.firetv.youtube/dev.cobalt.app.MainActivity`) defaults to presenting a modal "Who's watching?" account selector on cold launches, stalling playback in an uninitialized state (`position = -1`, `speed = 0.0`) while the primary Google TV plays ahead.
+  - *Engineering Resolution*: Engineered an autonomous two-tier bypass: Tier 1 executes a pre-flight probe at $2800\text{ms}$ post-beam dispatching a non-destructive `SELECT` (`KEYCODE_DPAD_CENTER`) key to auto-select the active profile; Tier 2 continuously monitors follower telemetry in `TvMediaBridge.syncWatchPartyFollowers()`, automatically unsticking any follower caught in `BUFFERING`/`IDLE` while the leader is `PLAYING`.
+- **Watch Party Rehydration & Ongoing Session Attachment (`WatchPartySessionStore.kt`)**: Eliminated session drift where restarting the app while TVs were mid-stream caused the status card to fall back to "TAP TO SYNC". Restores leader focus and linked follower topology instantaneously from persistent store.
+
 ## [1.3.0] - 2026-11-03
 
 ### Added
