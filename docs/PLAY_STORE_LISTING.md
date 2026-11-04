@@ -1,6 +1,6 @@
 # 📱 Argus — Google Play Store Turnkey Submission Kit
 
-> **Target Release:** `v1.2.0` (`versionCode = 3`)  
+> **Target Release:** `v1.3.5` (`versionCode = 10`)  
 > **Package Identifier:** `com.rmediatech.sovereignremote`  
 > **Developer Entity:** `RMediaTech LLC`  
 > **Prepared For:** Wednesday Console Launch & Registration
@@ -147,8 +147,8 @@ Follow these steps once you access Google Play Console:
    - Complete using the exact answers in Section 2 above (Everything is **NO**; zero data collection).
 6. **Upload Production Release Bundle**:
    - Go to **Production** -> **Create New Release**.
-   - Upload `dist/release-v1.2.0/argus-v1.2.0.aab`.
-   - Release Name: `1.2.0 - Multi-Platform Cinema Engine & Watch Party Lockstep`
+   - Upload `dist/release-v1.3.5/argus-v1.3.5.aab` (or direct unsigned/signed release build).
+   - Release Name: `1.3.5 - Universal Lockstep D-Pad & Cinema Watch Party Engine`
    - Release Notes: Copy from [CHANGELOG.md](file:///home/emhcet/private/projects/desktop/android/argus/CHANGELOG.md).
 7. **Submit for Review**:
    - Click **Review release** -> **Start rollout to Production**!
