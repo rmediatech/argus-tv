@@ -162,4 +162,48 @@ class SovereignTvTwinCrucibleTest {
         assertNull("Healing snapshot must be cleared", coordinator.healingSnapshot)
         assertTrue("Follower telemetry must be cleared", coordinator.followerTelemetry.isEmpty())
     }
+
+    @Test
+    fun testWatchPartyPersistenceAndAutoRehydrationAcrossProcessDeath() = kotlinx.coroutines.test.runTest {
+        val app = android.app.Application()
+        val registry = com.rmediatech.sovereignremote.protocols.TvProtocolRegistry(context = null)
+        val ftv = VirtualTvHardwareNode("ftv_node", "Fire TV Stick 4K Max", DeviceType.FIRE_TV, "192.168.1.158")
+        registry.register(ftv)
+        val allDevs = listOf(ftv.toRemoteDevice())
+
+        // 1. Session 1: User engages Watch Party with Fire TV
+        val coordinatorSession1 = com.rmediatech.sovereignremote.state.ArgusMediaCoordinator(
+            context = app,
+            scope = this,
+            registry = registry
+        )
+        coordinatorSession1.toggleWatchPartyDevice(ftv.ip, allDevs, leaderIp = "192.168.1.186")
+        testScheduler.runCurrent()
+        assertTrue("Session 1 must have Fire TV in party", coordinatorSession1.watchPartyIps.contains(ftv.ip))
+
+        // 2. Process Death Simulation: Argus is killed / closed while party is still playing on TVs!
+        // Session 1 is dereferenced.
+
+        // 3. Session 2: User re-launches Argus
+        val coordinatorSession2 = com.rmediatech.sovereignremote.state.ArgusMediaCoordinator(
+            context = app,
+            scope = this,
+            registry = registry
+        )
+        // Assert: Session 2 automatically rehydrates the active party cluster from persistent SST store!
+        assertTrue("Session 2 MUST auto-rehydrate ongoing party followers", coordinatorSession2.watchPartyIps.contains(ftv.ip))
+
+        // 4. User ends party from Session 2
+        coordinatorSession2.stopWatchParty(allDevs)
+        testScheduler.runCurrent()
+        assertTrue("Party must be cleanly stopped from restored session", coordinatorSession2.watchPartyIps.isEmpty())
+
+        // 5. Session 3: Next launch is completely clean
+        val coordinatorSession3 = com.rmediatech.sovereignremote.state.ArgusMediaCoordinator(
+            context = app,
+            scope = this,
+            registry = registry
+        )
+        assertTrue("Clean launch after stop must have empty party", coordinatorSession3.watchPartyIps.isEmpty())
+    }
 }

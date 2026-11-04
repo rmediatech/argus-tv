@@ -42,6 +42,19 @@ class ArgusMediaCoordinator(
 
     private var telemetryJob: Job? = null
     private var guardedDevices = mutableMapOf<String, RemoteDevice>()
+    private val sessionStore = WatchPartySessionStore(context)
+
+    init {
+        // Auto-rehydrate ongoing Watch Party session across app restart
+        val saved = sessionStore.loadSession()
+        if (saved != null) {
+            watchPartyIps = saved.followerIps
+            SovereignLogger.i(
+                SovereignLogger.Category.LIFECYCLE,
+                "Rehydrated ongoing WatchParty session: followers=${saved.followerIps}"
+            )
+        }
+    }
 
     fun startMonitoring(
         deviceProvider: () -> RemoteDevice?,
@@ -128,9 +141,11 @@ class ArgusMediaCoordinator(
         }
     }
 
-    fun toggleWatchPartyDevice(ip: String, allDevices: List<RemoteDevice> = emptyList()) {
+    fun toggleWatchPartyDevice(ip: String, allDevices: List<RemoteDevice> = emptyList(), leaderIp: String = "") {
         val removing = watchPartyIps.contains(ip)
-        watchPartyIps = if (removing) watchPartyIps - ip else watchPartyIps + ip
+        val updated = if (removing) watchPartyIps - ip else watchPartyIps + ip
+        watchPartyIps = updated
+        sessionStore.saveSession(leaderIp, updated)
         if (removing) {
             guardedDevices.remove(ip)?.let { dev ->
                 scope.launch { registry.releaseSleepGuard(dev) }
@@ -153,6 +168,7 @@ class ArgusMediaCoordinator(
         watchPartyIps = emptySet()
         followerTelemetry = emptyMap()
         healingSnapshot = null
+        sessionStore.clearSession()
 
         val toRelease = buildSet {
             addAll(guardedDevices.values)
@@ -176,7 +192,9 @@ class ArgusMediaCoordinator(
      */
     fun swapLeaderIfWatchParty(oldLeaderIp: String, newLeaderIp: String) {
         if (watchPartyIps.contains(newLeaderIp)) {
-            watchPartyIps = (watchPartyIps - newLeaderIp) + oldLeaderIp
+            val updated = (watchPartyIps - newLeaderIp) + oldLeaderIp
+            watchPartyIps = updated
+            sessionStore.saveSession(newLeaderIp, updated)
             SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "WatchParty leader swapped: $oldLeaderIp -> $newLeaderIp (followers: $watchPartyIps)")
         }
     }
