@@ -136,7 +136,13 @@ fun RemoteScreen(
                 nowPlaying = mediaCoordinator?.nowPlaying,
                 watchPartyIps = mediaCoordinator?.watchPartyIps ?: emptySet(),
                 followerTelemetry = mediaCoordinator?.followerTelemetry ?: emptyMap(),
-                onToggleWatchPartyDevice = { ip -> mediaCoordinator?.toggleWatchPartyDevice(ip, discoveredDevices) },
+                onToggleWatchPartyDevice = { ip ->
+                    val leader = currentDevice?.ipAddress ?: ""
+                    mediaCoordinator?.toggleWatchPartyDevice(ip, discoveredDevices, leaderIp = leader)
+                },
+                onStopParty = {
+                    mediaCoordinator?.stopWatchParty(discoveredDevices)
+                },
                 onBeamMedia = { q, src -> mediaCoordinator?.beamMediaToTv(currentDevice, q, discoveredDevices, src) },
                 onScanRequested = onScanRequested,
                 onAddManualIp = onManualIpAdded,

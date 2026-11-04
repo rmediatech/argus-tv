@@ -51,16 +51,28 @@ class ArgusMediaCoordinator(
             watchPartyIps = saved.followerIps
             SovereignLogger.i(
                 SovereignLogger.Category.LIFECYCLE,
-                "Rehydrated ongoing WatchParty session: followers=${saved.followerIps}"
+                "Rehydrated ongoing WatchParty session: leader=${saved.leaderIp}, followers=${saved.followerIps}"
             )
         }
     }
 
     fun startMonitoring(
         deviceProvider: () -> RemoteDevice?,
-        allDevicesProvider: () -> List<RemoteDevice>
+        allDevicesProvider: () -> List<RemoteDevice>,
+        onAutoSelectLeader: ((RemoteDevice) -> Unit)? = null
     ) {
         telemetryJob?.cancel()
+        // If rehydrated session has a leader different from current, promote leader if valid
+        val saved = sessionStore.loadSession()
+        if (saved != null && onAutoSelectLeader != null) {
+            val allDevs = allDevicesProvider()
+            val savedLeader = allDevs.find { it.ipAddress == saved.leaderIp }
+            val current = deviceProvider()
+            if (savedLeader != null && current?.ipAddress != savedLeader.ipAddress) {
+                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Restoring active WatchParty primary focus to leader: ${savedLeader.name}")
+                onAutoSelectLeader(savedLeader)
+            }
+        }
         telemetryJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val activeDevice = deviceProvider()

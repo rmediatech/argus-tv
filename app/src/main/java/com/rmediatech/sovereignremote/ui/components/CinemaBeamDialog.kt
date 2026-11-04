@@ -39,6 +39,7 @@ fun CinemaBeamDialog(
     watchPartyIps: Set<String>,
     followerTelemetry: Map<String, NowPlayingState> = emptyMap(),
     onToggleWatchPartyDevice: (String) -> Unit,
+    onStopParty: () -> Unit = {},
     onBeamMedia: (String, CinemaSource) -> Unit,
     onScanRequested: () -> Unit = {},
     onAddManualIp: (String) -> Unit = {},
@@ -183,16 +184,36 @@ fun CinemaBeamDialog(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Text(
-                        text = "Scan Wi-Fi 🔄",
-                        color = palette.primaryAccent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onScanRequested() }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (watchPartyIps.isNotEmpty()) {
+                            Text(
+                                text = "STOP PARTY 🛑",
+                                color = com.rmediatech.sovereignremote.ui.theme.CrimsonRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        onStopParty()
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Text(
+                            text = "Scan Wi-Fi 🔄",
+                            color = palette.primaryAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onScanRequested() }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
                 if (otherDevices.isNotEmpty()) {

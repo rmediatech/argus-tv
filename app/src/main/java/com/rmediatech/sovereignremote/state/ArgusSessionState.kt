@@ -52,7 +52,7 @@ class ArgusSessionState(
         if (cleaned.size != discoveredDevices.size) { discoveredDevices = cleaned; persistDevices(cleaned) }
         restoreInitialDevice()
         startLivenessMonitoring()
-        mediaCoordinator.startMonitoring({ currentDevice }, { discoveredDevices })
+        mediaCoordinator.startMonitoring({ currentDevice }, { discoveredDevices }) { selectDevice(it) }
         refreshUnconfiguredDevices()
     }
 
