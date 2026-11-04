@@ -255,7 +255,7 @@ class ArgusSessionState(
         }
 
         SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "sendKey($key) -> ${device.name} (${device.ipAddress}:${device.port})")
-        mediaCoordinator.fanoutTransportKeyIfWatchParty(key, device, discoveredDevices)
+        mediaCoordinator.fanoutKeyIfWatchParty(key, device, discoveredDevices)
         scope.launch {
             val dispatch = registry.sendKeyWithAutoPromotion(device, key)
             if (dispatch.isSuccess) {

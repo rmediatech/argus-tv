@@ -30,6 +30,8 @@ fun WatchPartyShieldChip(
     zone: HealingZone,
     statusText: String,
     screenCount: Int,
+    isDpadSyncActive: Boolean = false,
+    onToggleDpadSync: (() -> Unit)? = null,
     onStopParty: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -97,6 +99,24 @@ fun WatchPartyShieldChip(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (isDpadSyncActive) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(EmeraldGreen.copy(alpha = 0.15f))
+                            .border(1.dp, EmeraldGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable(enabled = onToggleDpadSync != null) { onToggleDpadSync?.invoke() }
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "🎮 D-PAD",
+                            color = EmeraldGreen,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))

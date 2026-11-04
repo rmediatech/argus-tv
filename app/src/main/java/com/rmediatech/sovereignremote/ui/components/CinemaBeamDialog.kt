@@ -156,18 +156,35 @@ fun CinemaBeamDialog(
                         unfocusedBorderColor = palette.border
                     )
                 )
+                if (selectedSource.isInteractiveGuide) {
+                    Text(
+                        text = "📺 Live Guide: D-pad navigation automatically mirrors across all Watch Party TVs so you can browse channels together in lockstep.",
+                        fontSize = 11.sp,
+                        color = palette.primaryAccent,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                }
                 Button(
                     onClick = {
-                        if (queryText.isNotBlank()) {
+                        val canProceed = queryText.isNotBlank() || selectedSource.isInteractiveGuide
+                        if (canProceed) {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            onBeamMedia(queryText, selectedSource)
+                            val targetQuery = if (queryText.isBlank() && selectedSource.isInteractiveGuide) "Live Guide" else queryText
+                            onBeamMedia(targetQuery, selectedSource)
                             onDismiss()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = palette.primaryAccent)
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primaryAccent),
+                    enabled = queryText.isNotBlank() || selectedSource.isInteractiveGuide
                 ) {
-                    Text("Beam ${selectedSource.displayName} to TV", color = palette.background, fontWeight = FontWeight.Bold)
+                    val btnLabel = if (selectedSource.isInteractiveGuide && queryText.isBlank()) {
+                        "Launch ${selectedSource.displayName} Guide"
+                    } else {
+                        "Beam ${selectedSource.displayName} to TV"
+                    }
+                    Text(btnLabel, color = palette.background, fontWeight = FontWeight.Bold)
                 }
             }
 

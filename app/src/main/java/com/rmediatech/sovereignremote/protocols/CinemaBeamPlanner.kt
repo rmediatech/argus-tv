@@ -63,7 +63,13 @@ object CinemaBeamPlanner {
                 "https://www.youtube.com/results?search_query=$encoded"
             }
             CinemaSource.PRIME_VIDEO -> "https://watch.amazon.com/watch?search=$encoded"
-            CinemaSource.PLUTO_TV -> "https://pluto.tv/search/$encoded"
+            CinemaSource.PLUTO_TV -> {
+                if (trimmed.isBlank() || trimmed.equals("Live Guide", ignoreCase = true)) {
+                    "https://pluto.tv/live-tv"
+                } else {
+                    "https://pluto.tv/search/$encoded"
+                }
+            }
             CinemaSource.DIRECT_URL -> trimmed
         }
     }
@@ -96,7 +102,9 @@ object CinemaBeamPlanner {
         startOffsetSeconds: Long = 0L
     ): String {
         val trimmed = uriOrQuery.trim().take(256)
-        require(trimmed.isNotBlank()) { "Media query or URL cannot be blank" }
+        if (!source.isInteractiveGuide) {
+            require(trimmed.isNotBlank()) { "Media query or URL cannot be blank" }
+        }
         val rawSafe = trimmed.replace(Regex("""['"`$\\;\r\n\t|&<>]"""), "")
         val safeInput = if (rawSafe.startsWith("youtu.be/") || rawSafe.startsWith("youtube.com/") || rawSafe.startsWith("www.")) {
             "https://$rawSafe"
@@ -154,9 +162,14 @@ object CinemaBeamPlanner {
                 }
                 CinemaSource.PLUTO_TV -> {
                     val plutoPkg = "tv.pluto.android"
-                    append("am start -a android.intent.action.VIEW -d '$targetUrl' $plutoPkg ")
-                    append("|| am start -n $plutoPkg/.activity.SplashActivity ")
-                    append("|| monkey -p $plutoPkg -c android.intent.category.LAUNCHER 1")
+                    if (safeInput.isBlank() || safeInput.equals("Live Guide", ignoreCase = true) || safeInput.contains("live-tv")) {
+                        append("am start -n $plutoPkg/.activity.SplashActivity ")
+                        append("|| monkey -p $plutoPkg -c android.intent.category.LAUNCHER 1")
+                    } else {
+                        append("am start -a android.intent.action.VIEW -d '$targetUrl' $plutoPkg ")
+                        append("|| am start -n $plutoPkg/.activity.SplashActivity ")
+                        append("|| monkey -p $plutoPkg -c android.intent.category.LAUNCHER 1")
+                    }
                 }
                 CinemaSource.DIRECT_URL -> {
                     append("am start -a android.intent.action.VIEW -d '$targetUrl' -t 'video/*'")

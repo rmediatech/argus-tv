@@ -9,31 +9,36 @@ enum class CinemaSource(
     val id: String,
     val displayName: String,
     val iconEmoji: String,
-    val placeholder: String
+    val placeholder: String,
+    val isInteractiveGuide: Boolean = false
 ) {
     YOUTUBE(
         id = "youtube",
         displayName = "YouTube",
         iconEmoji = "🍿",
-        placeholder = "e.g. Dreamcatcher, Matrix, or YouTube URL"
+        placeholder = "e.g. Dreamcatcher, Matrix, or YouTube URL",
+        isInteractiveGuide = false
     ),
     PRIME_VIDEO(
         id = "prime",
         displayName = "Prime Video",
         iconEmoji = "📦",
-        placeholder = "e.g. Fallout, Reacher, or Prime Video title"
+        placeholder = "e.g. Fallout, Reacher, or Prime Video title",
+        isInteractiveGuide = false
     ),
     PLUTO_TV(
         id = "pluto",
         displayName = "Pluto TV",
         iconEmoji = "📺",
-        placeholder = "e.g. Star Trek, 007, or channel name"
+        placeholder = "Live Guide (Tap Launch to browse channels in lockstep)",
+        isInteractiveGuide = true
     ),
     DIRECT_URL(
         id = "direct",
         displayName = "Direct Stream",
         iconEmoji = "🌐",
-        placeholder = "https://example.com/stream.mp4 or HLS m3u8"
+        placeholder = "https://example.com/stream.mp4 or HLS m3u8",
+        isInteractiveGuide = false
     );
 
     companion object {

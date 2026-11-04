@@ -108,10 +108,13 @@ fun RemoteScreen(
             // 4. WATCH PARTY SHIELD STATUS (IF ACTIVE)
             if (mediaCoordinator != null && mediaCoordinator.watchPartyIps.isNotEmpty()) {
                 val snapshot = mediaCoordinator.healingSnapshot
+                val isDpadSyncActive = mediaCoordinator.activeSource?.isInteractiveGuide == true || mediaCoordinator.isDpadMirrorEnabled
                 WatchPartyShieldChip(
                     zone = snapshot?.zone ?: TvAutoHealingSentinel.HealingZone.GREEN,
-                    statusText = snapshot?.statusMessage ?: "Broadcasting in Lockstep",
+                    statusText = snapshot?.statusMessage ?: (if (isDpadSyncActive) "Lockstep D-Pad & Comms Active" else "Broadcasting in Lockstep"),
                     screenCount = mediaCoordinator.watchPartyIps.size + 1,
+                    isDpadSyncActive = isDpadSyncActive,
+                    onToggleDpadSync = { mediaCoordinator.toggleDpadMirror() },
                     onStopParty = {
                         performHaptic()
                         mediaCoordinator.stopWatchParty(discoveredDevices)

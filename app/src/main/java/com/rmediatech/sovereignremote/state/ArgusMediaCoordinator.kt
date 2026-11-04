@@ -40,6 +40,17 @@ class ArgusMediaCoordinator(
     var healingSnapshot by mutableStateOf<TvAutoHealingSentinel.SentinelTelemetrySnapshot?>(null)
         private set
 
+    var activeSource by mutableStateOf<CinemaSource?>(null)
+        private set
+
+    var isDpadMirrorEnabled by mutableStateOf(false)
+        private set
+
+    fun toggleDpadMirror() {
+        isDpadMirrorEnabled = !isDpadMirrorEnabled
+        SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "WatchParty D-pad mirroring toggled: $isDpadMirrorEnabled")
+    }
+
     private var telemetryJob: Job? = null
     private var guardedDevices = mutableMapOf<String, RemoteDevice>()
     private val sessionStore = WatchPartySessionStore(context)
@@ -182,6 +193,8 @@ class ArgusMediaCoordinator(
         followerTelemetry = emptyMap()
         healingSnapshot = null
         nowPlaying = null
+        activeSource = null
+        isDpadMirrorEnabled = false
         sessionStore.clearSession()
 
         val allPartyDevices = buildSet {
@@ -219,18 +232,30 @@ class ArgusMediaCoordinator(
     }
 
     /**
-     * Zero-lag parallel transport & volume fanout: when user presses Play/Pause, Rewind, Fast-Forward,
-     * Volume Up/Down, or Mute while Watch Party is active, dispatches immediately to all synced follower TVs.
+     * Adaptive Watch Party Key Fanout:
+     * - Transport (Play/Pause, Rewind, Fast-Forward) and Volume always fan out across all party TVs.
+     * - D-Pad & Navigation (Up, Down, Left, Right, Select, Back) fan out whenever the active source
+     *   is an interactive live guide (e.g. Pluto TV), or when D-pad mirroring is explicitly toggled by operator.
      */
-    fun fanoutTransportKeyIfWatchParty(
+    fun fanoutKeyIfWatchParty(
         key: RemoteKey,
         primaryDevice: RemoteDevice,
         allDevices: List<RemoteDevice>
     ) {
         if (watchPartyIps.isEmpty()) return
-        if (key != RemoteKey.PLAY_PAUSE && key != RemoteKey.PLAY && key != RemoteKey.PAUSE &&
-            key != RemoteKey.REWIND && key != RemoteKey.FAST_FORWARD &&
-            key != RemoteKey.VOLUME_UP && key != RemoteKey.VOLUME_DOWN && key != RemoteKey.MUTE) return
+
+        val isTransportOrVolume = key == RemoteKey.PLAY_PAUSE || key == RemoteKey.PLAY || key == RemoteKey.PAUSE ||
+            key == RemoteKey.REWIND || key == RemoteKey.FAST_FORWARD ||
+            key == RemoteKey.VOLUME_UP || key == RemoteKey.VOLUME_DOWN || key == RemoteKey.MUTE
+
+        val isDpadNav = key == RemoteKey.UP || key == RemoteKey.DOWN ||
+            key == RemoteKey.LEFT || key == RemoteKey.RIGHT ||
+            key == RemoteKey.SELECT || key == RemoteKey.BACK
+
+        val isInteractive = activeSource?.isInteractiveGuide == true
+        val shouldFanout = isTransportOrVolume || (isDpadNav && (isInteractive || isDpadMirrorEnabled))
+
+        if (!shouldFanout) return
 
         val followers = allDevices.filter {
             it.ipAddress != primaryDevice.ipAddress && watchPartyIps.contains(it.ipAddress)
@@ -241,11 +266,17 @@ class ArgusMediaCoordinator(
         for (follower in followers) {
             TvMediaBridge.recordFollowerSync(follower.ipAddress, now)
             scope.launch {
-                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty parallel fanout $key -> ${follower.name} (${follower.ipAddress})")
+                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty lockstep fanout $key -> ${follower.name} (${follower.ipAddress}) [guideSync=$isInteractive, dpadMirror=$isDpadMirrorEnabled]")
                 registry.sendKey(follower, key)
             }
         }
     }
+
+    fun fanoutTransportKeyIfWatchParty(
+        key: RemoteKey,
+        primaryDevice: RemoteDevice,
+        allDevices: List<RemoteDevice>
+    ) = fanoutKeyIfWatchParty(key, primaryDevice, allDevices)
 
     /**
      * Beams a movie search or URL simultaneously to the primary TV AND all active Watch Party TVs,
@@ -262,21 +293,23 @@ class ArgusMediaCoordinator(
             return null
         }
         val clean = queryOrUrl.trim()
-        if (clean.isBlank()) return null
+        if (clean.isBlank() && !source.isInteractiveGuide) return null
+        val query = if (clean.isBlank() && source.isInteractiveGuide) "Live Guide" else clean
+        activeSource = source
 
         val followers = allDevices.filter {
             it.ipAddress != target.ipAddress && watchPartyIps.contains(it.ipAddress)
         }
         val allTargets = listOf(target) + followers
         val label = if (followers.isEmpty()) target.name else "${allTargets.size} Watch Party TVs"
-        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Beaming [${source.displayName}] '$clean' -> $label")
+        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Beaming [${source.displayName}] '$query' -> $label [guideSync=${source.isInteractiveGuide}]")
         try {
             Toast.makeText(context, "Beaming ${source.displayName} to $label...", Toast.LENGTH_SHORT)?.show()
         } catch (_: Exception) {}
 
         return scope.launch {
             // 1. Resolve canonical stream URI per source
-            val canonicalUri = CinemaBeamPlanner.resolveMediaUri(clean, source)
+            val canonicalUri = CinemaBeamPlanner.resolveMediaUri(query, source)
             SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Resolved [${source.displayName}] canonical: '$canonicalUri'")
 
             val results = allTargets.map { dev ->

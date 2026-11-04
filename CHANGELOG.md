@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Every entry strictly complies with the Universal Sovereign Engineer-to-Engineer Standard (`SOVEREIGN-CHANGELOG-E2E-01`).
 
+## [1.3.3] - 2026-11-03
+
+### Added
+- **[Protocol/Interaction] Source-Adaptive Watch Party D-Pad Lockstep & Interactive Guide Routing (`CinemaSource.kt`, `ArgusMediaCoordinator.kt`, `CinemaBeamPlanner.kt`)**:
+  - *Fleet Hardware Reality*: Live telemetry captured during real-world Watch Party use revealed a fundamental architectural divide between streaming sources: On-demand video streams (YouTube) deep-link directly into player buffers, requiring only transport/volume fanout. Conversely, linear guide and live TV applications (Pluto TV) launch into an electronic program guide (EPG) where content is not pre-selected by search string, but requires active D-pad browsing (`UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`). Because the coordinator previously restricted fanout exclusively to media transport keys, navigational input applied only to the primary TV, stranding follower screens on the initial splash guide while the primary TV scrolled through channels.
+  - *Architectural Resolution*: Classified media sources agnostically via `CinemaSource.isInteractiveGuide`. When an interactive guide source like Pluto TV is active, `ArgusMediaCoordinator.fanoutKeyIfWatchParty()` dynamically elevates D-pad navigation (`UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`, `BACK`) to parallel multicast fanout across all active follower displays in lockstep. Furthermore, search query input was made optional for guide applications (with direct "Launch Guide" action), and a manual `🎮 D-PAD` lockstep toggle was added to `WatchPartyShieldChip` for on-demand navigational mirroring across any arbitrary streaming app.
+  - *Empirical Verification*: Verified in `SovereignTvTwinCrucibleTest.testAdaptiveSourceInteraction_PlutoTvFansOutDpad_YouTubeRestrictsDpadUnlessToggled` asserting D-pad navigation fans out automatically on Pluto TV and remains restricted on YouTube unless explicitly toggled.
+
 ## [1.3.2] - 2026-11-03
 
 ### Fixed
