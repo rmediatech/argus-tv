@@ -144,6 +144,33 @@ class ArgusMediaCoordinator(
     }
 
     /**
+     * Seamless & Automatic Watch Party Stop + Reset:
+     * Disengages all synced follower TVs, immediately restores factory power/sleep settings
+     * across every linked TV model agnostically, resets nowPlaying telemetry, and clears leases.
+     */
+    fun stopWatchParty(allDevices: List<RemoteDevice> = emptyList()) {
+        val targetIps = watchPartyIps
+        watchPartyIps = emptySet()
+        followerTelemetry = emptyMap()
+        healingSnapshot = null
+
+        val toRelease = buildSet {
+            addAll(guardedDevices.values)
+            for (ip in targetIps) {
+                allDevices.find { it.ipAddress == ip }?.let { add(it) }
+            }
+        }
+        guardedDevices.clear()
+
+        scope.launch {
+            for (dev in toRelease) {
+                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: resetting ${dev.name} (${dev.ipAddress}) to factory defaults")
+                registry.releaseSleepGuard(dev)
+            }
+        }
+    }
+
+    /**
      * Preserves Watch Party connectivity when user switches primary TV focus in the dropdown:
      * swaps the old leader into followers and promotes the new focus TV to leader.
      */

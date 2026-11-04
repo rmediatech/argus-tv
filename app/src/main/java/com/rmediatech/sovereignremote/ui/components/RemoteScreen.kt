@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.rmediatech.sovereignremote.model.DeviceLivenessState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
+import com.rmediatech.sovereignremote.protocols.TvAutoHealingSentinel
 import com.rmediatech.sovereignremote.state.ArgusMediaCoordinator
 import com.rmediatech.sovereignremote.ui.components.controllers.*
 import com.rmediatech.sovereignremote.ui.theme.*
@@ -104,11 +105,16 @@ fun RemoteScreen(
             }
 
             // 4. WATCH PARTY SHIELD STATUS (IF ACTIVE)
-            mediaCoordinator?.healingSnapshot?.let { snapshot ->
+            if (mediaCoordinator != null && mediaCoordinator.watchPartyIps.isNotEmpty()) {
+                val snapshot = mediaCoordinator.healingSnapshot
                 WatchPartyShieldChip(
-                    zone = snapshot.zone,
-                    statusText = snapshot.statusMessage,
-                    screenCount = (mediaCoordinator.watchPartyIps.size) + 1
+                    zone = snapshot?.zone ?: TvAutoHealingSentinel.HealingZone.GREEN,
+                    statusText = snapshot?.statusMessage ?: "Broadcasting in Lockstep",
+                    screenCount = mediaCoordinator.watchPartyIps.size + 1,
+                    onStopParty = {
+                        performHaptic()
+                        mediaCoordinator.stopWatchParty(discoveredDevices)
+                    }
                 )
             }
 
