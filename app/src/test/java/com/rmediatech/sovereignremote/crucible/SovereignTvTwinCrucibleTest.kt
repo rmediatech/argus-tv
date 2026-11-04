@@ -125,4 +125,41 @@ class SovereignTvTwinCrucibleTest {
             assertEquals(0L, state?.positionMs)
         }
     }
+
+    @Test
+    fun testTvAgnosticStopWatchPartyFactoryReset() = kotlinx.coroutines.test.runTest {
+        // Spin up two disparate brand virtual TV nodes: Google TV and Fire TV
+        val gtv = VirtualTvHardwareNode("gtv_node", "Hisense Google TV", DeviceType.GOOGLE_TV, "192.168.1.186")
+        val ftv = VirtualTvHardwareNode("ftv_node", "Fire TV Stick 4K Max", DeviceType.FIRE_TV, "192.168.1.158")
+
+        val registry = com.rmediatech.sovereignremote.protocols.TvProtocolRegistry(context = null)
+        registry.register(gtv)
+        registry.register(ftv)
+
+        val coordinator = com.rmediatech.sovereignremote.state.ArgusMediaCoordinator(
+            context = android.app.Application(),
+            scope = this,
+            registry = registry
+        )
+
+        val allDevs = listOf(gtv.toRemoteDevice(), ftv.toRemoteDevice())
+
+        // 1. Engage Watch Party
+        coordinator.toggleWatchPartyDevice(ftv.ip, allDevs)
+        testScheduler.runCurrent()
+        assertTrue("Fire TV must be marked as synced", coordinator.watchPartyIps.contains(ftv.ip))
+        assertTrue("Fire TV must have acquired sleep guard", ftv.sleepGuardAcquired)
+
+        // 2. Trigger the new STOP PARTY teardown
+        coordinator.stopWatchParty(allDevs)
+        testScheduler.runCurrent()
+
+        // 3. Assert complete TV-agnostic cleanup
+        assertTrue("Watch Party IPs must be completely empty", coordinator.watchPartyIps.isEmpty())
+        assertFalse("Fire TV sleep guard must be cleanly released", ftv.sleepGuardAcquired)
+        assertEquals("Fire TV stay-on setting must be factory default 0", 0, ftv.stayOnWhilePluggedInSetting)
+        assertEquals("Google TV stay-on setting must be factory default 0", 0, gtv.stayOnWhilePluggedInSetting)
+        assertNull("Healing snapshot must be cleared", coordinator.healingSnapshot)
+        assertTrue("Follower telemetry must be cleared", coordinator.followerTelemetry.isEmpty())
+    }
 }
