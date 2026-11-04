@@ -221,13 +221,17 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     }
 
     override suspend fun queryNowPlaying(device: RemoteDevice): NowPlayingState? = withContext(Dispatchers.IO) {
-        try {
-            val dadb = getDadb(device.ipAddress, 5555)
-            val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
-            TvMediaBridge.parseAdbMediaSession(dump)
-        } catch (_: Exception) {
-            null
+        for (attempt in 1..2) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+                val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
+                return@withContext TvMediaBridge.parseAdbMediaSession(dump)
+            } catch (_: Exception) {
+                resetConnections(device.ipAddress)
+                if (attempt == 1) continue
+            }
         }
+        null
     }
 
     override suspend fun launchMediaUri(
@@ -235,14 +239,20 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         uriOrQuery: String,
         source: CinemaSource
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val dadb = getDadb(device.ipAddress, 5555)
-            val cmd = CinemaBeamPlanner.buildAdbBeamCommand(uriOrQuery, isFireTv = true, source = source)
-            dadb.shell(cmd)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+        val cmd = CinemaBeamPlanner.buildAdbBeamCommand(uriOrQuery, isFireTv = true, source = source)
+        var lastErr: Exception? = null
+        for (attempt in 1..2) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+                dadb.shell(cmd)
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                lastErr = e
+                resetConnections(device.ipAddress)
+                if (attempt == 1) continue
+            }
         }
+        Result.failure(lastErr ?: Exception("ADB beam failed on ${device.ipAddress}"))
     }
 
     override suspend fun acquireSleepGuard(device: RemoteDevice): Result<Unit> = Result.success(Unit)

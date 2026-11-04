@@ -60,7 +60,12 @@ object TvAutoHealingSentinel {
         nowLocalMs: Long = System.currentTimeMillis()
     ): AutoHealDecision {
         if (leaderState == null || followerState == null) return AutoHealDecision.LockstepIntact
-        if (leaderState.status != PlaybackStatus.PLAYING && followerState.status != PlaybackStatus.PLAYING) {
+        if (leaderState.status != PlaybackStatus.PLAYING || followerState.status != PlaybackStatus.PLAYING) {
+            return AutoHealDecision.LockstepIntact
+        }
+        if (leaderState.title.isNotBlank() && followerState.title.isNotBlank() &&
+            !leaderState.title.equals(followerState.title, ignoreCase = true)
+        ) {
             return AutoHealDecision.LockstepIntact
         }
 

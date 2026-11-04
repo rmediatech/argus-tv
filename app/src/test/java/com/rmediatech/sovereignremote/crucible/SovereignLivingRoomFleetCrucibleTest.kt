@@ -4,6 +4,7 @@ import android.app.Application
 import com.rmediatech.sovereignremote.model.*
 import com.rmediatech.sovereignremote.protocols.CinemaBeamPlanner
 import com.rmediatech.sovereignremote.protocols.TvAutoHealingSentinel
+import com.rmediatech.sovereignremote.protocols.TvMediaBridge
 import com.rmediatech.sovereignremote.protocols.TvProtocolRegistry
 import com.rmediatech.sovereignremote.state.ArgusMediaCoordinator
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -270,5 +271,150 @@ class SovereignLivingRoomFleetCrucibleTest {
 
         assertEquals(TvAutoHealingSentinel.HealingZone.RED, TvAutoHealingSentinel.classifyZone(2501L))
         assertEquals(TvAutoHealingSentinel.HealingZone.RED, TvAutoHealingSentinel.classifyZone(15000L))
+    }
+
+    @Test
+    fun testGoogleTvSymbolicPlaybackStateAndFireTvZeroSpeedBufferingClassification() {
+        // 1. Real Google TV (Android 11+) dumpsys format with symbolic PLAYING(3) and PAUSED(2)
+        val gtvPlayingDump = """
+            Display Power: state=ON
+            mWakefulness=Awake
+            mLastWakeTime=440000000 (2084218 ms ago)
+            package=com.google.android.youtube.tv
+              active=true
+              state=PlaybackState {state=PLAYING(3), position=153, buffered position=0, speed=1.0, updated=442084218, actions=382}
+              metadata: size=5, description=NEW DETAILS: US aircraft carrier headed to Mideast, Fox News, null
+        """.trimIndent()
+        val gtvState = TvMediaBridge.parseAdbMediaSession(gtvPlayingDump, capturedAtLocalMs = 1000L)
+        assertNotNull("Google TV symbolic PLAYING(3) must parse cleanly", gtvState)
+        assertEquals(PlaybackStatus.PLAYING, gtvState?.status)
+        assertEquals("com.google.android.youtube.tv", gtvState?.appPackage)
+        assertTrue(gtvState?.title?.contains("US aircraft carrier") == true)
+
+        val gtvPausedDump = """
+            Display Power: state=ON
+            mWakefulness=Awake
+            package=com.google.android.youtube.tv
+              active=true
+              state=PlaybackState {state=PAUSED(2), position=57741, buffered position=0, speed=0.0, updated=442141886, actions=382}
+              metadata: size=5, description=NEW DETAILS: US aircraft carrier headed to Mideast, Fox News, null
+        """.trimIndent()
+        val gtvPaused = TvMediaBridge.parseAdbMediaSession(gtvPausedDump, capturedAtLocalMs = 2000L)
+        assertNotNull("Google TV symbolic PAUSED(2) must parse cleanly", gtvPaused)
+        assertEquals(PlaybackStatus.PAUSED, gtvPaused?.status)
+        assertEquals(57741L, gtvPaused?.positionMs)
+
+        // 2. Real Fire TV Cobalt zero-velocity state=3, position=0, speed=0.0 must classify as BUFFERING, never PLAYING
+        val ftvStalledDump = """
+            Display Power: state=ON
+            mWakefulness=Awake
+            package=com.amazon.firetv.youtube
+              active=true
+              state=PlaybackState {state=3, position=0, buffered position=0, speed=0.0, updated=186161095, actions=4}
+              metadata: size=4, description=Loading Stream, YouTube, null
+        """.trimIndent()
+        val ftvStalled = TvMediaBridge.parseAdbMediaSession(ftvStalledDump, capturedAtLocalMs = 3000L)
+        assertNotNull(ftvStalled)
+        assertEquals("Zero-speed state=3 on Cobalt must be BUFFERING, not PLAYING", PlaybackStatus.BUFFERING, ftvStalled?.status)
+    }
+
+    @Test
+    fun testSyncWatchPartyFollowers_SuppressesRogueSelectWhenFollowerIsMerelyBufferingVideo() = runTest {
+        TvMediaBridge.clearSyncCooldowns()
+        val registry = TvProtocolRegistry(context = null)
+        val follower = VirtualTvHardwareNode("ftv_buf", "Bedroom Fire TV", DeviceType.FIRE_TV, "192.168.1.158")
+        follower.activeApp = "com.amazon.firetv.youtube"
+        follower.playbackStatus = PlaybackStatus.BUFFERING
+        follower.isShowingProfilePicker = false // Merely buffering "Sovereign Movie", NOT on "Who's Watching?"
+        registry.register(follower)
+
+        val leaderPlaying = NowPlayingState(
+            appPackage = "com.google.android.youtube.tv",
+            appLabel = "YouTube",
+            title = "Sovereign Movie",
+            status = PlaybackStatus.PLAYING,
+            positionMs = 4500L,
+            speed = 1.0f
+        )
+
+        TvMediaBridge.syncWatchPartyFollowers(
+            leaderState = leaderPlaying,
+            followers = listOf(follower.toRemoteDevice()),
+            registry = registry,
+            nowMs = 50_000L
+        )
+        assertFalse("Follower buffering normal video must NEVER receive rogue SELECT key", follower.commandLog.contains("KEY:SELECT"))
+
+        // Now simulate actual modal profile picker ("Who's Watching?")
+        follower.isShowingProfilePicker = true
+        TvMediaBridge.syncWatchPartyFollowers(
+            leaderState = leaderPlaying,
+            followers = listOf(follower.toRemoteDevice()),
+            registry = registry,
+            nowMs = 60_000L
+        )
+        assertTrue("Follower trapped on actual Who's Watching picker MUST receive SELECT", follower.commandLog.contains("KEY:SELECT"))
+    }
+
+    @Test
+    fun testAutoHealingSentinel_SuppressesHoldWhenOneTvBufferingOrOnDifferentVideoTitle() {
+        val now = 100_000L
+        val leaderPlaying = NowPlayingState(
+            appPackage = "com.google.android.youtube.tv",
+            appLabel = "YouTube",
+            title = "Feature Film",
+            status = PlaybackStatus.PLAYING,
+            positionMs = 12_000L,
+            speed = 1.0f,
+            capturedAtLocalMs = now
+        )
+        val followerBuffering = leaderPlaying.copy(
+            status = PlaybackStatus.BUFFERING,
+            positionMs = 0L,
+            speed = 0.0f
+        )
+        // Must NOT trigger HardReconciliation while follower is still buffering
+        assertEquals(
+            TvAutoHealingSentinel.AutoHealDecision.LockstepIntact,
+            TvAutoHealingSentinel.evaluateDrift(leaderPlaying, followerBuffering, now)
+        )
+
+        // Must NOT trigger hold if follower is on a pre-roll ad with a different title
+        val followerOnAd = leaderPlaying.copy(
+            title = "Sponsored Pre-Roll Ad",
+            positionMs = 2_000L
+        )
+        assertEquals(
+            TvAutoHealingSentinel.AutoHealDecision.LockstepIntact,
+            TvAutoHealingSentinel.evaluateDrift(leaderPlaying, followerOnAd, now)
+        )
+    }
+
+    @Test
+    fun testStopWatchParty_SelfHealsAgainstSinglePacketDropDuringTeardown() = runTest {
+        val app = Application()
+        val registry = TvProtocolRegistry(context = null)
+        val leader = VirtualTvHardwareNode("gtv", "Living Room TV", DeviceType.GOOGLE_TV, "192.168.1.186")
+        val follower = VirtualTvHardwareNode("ftv", "Bedroom TV", DeviceType.FIRE_TV, "192.168.1.158")
+        registry.register(leader)
+        registry.register(follower)
+
+        val allDevices = listOf(leader.toRemoteDevice(), follower.toRemoteDevice())
+        val coordinator = ArgusMediaCoordinator(context = app, scope = this, registry = registry)
+        coordinator.toggleWatchPartyDevice(follower.ip, allDevices, leaderIp = leader.ip)
+        testScheduler.runCurrent()
+
+        leader.playbackStatus = PlaybackStatus.PLAYING
+        follower.playbackStatus = PlaybackStatus.PLAYING
+        // Inject 1 transient packet failure on follower right before Stop Party
+        follower.failNextKeys = 1
+
+        coordinator.stopWatchParty(allDevices, leader.toRemoteDevice())
+        testScheduler.runCurrent()
+
+        assertTrue("Follower still received PAUSE after self-healing retry", follower.commandLog.contains("KEY:PAUSE"))
+        assertTrue("Follower still received HOME", follower.commandLog.contains("KEY:HOME"))
+        assertEquals(PlaybackStatus.IDLE, leader.playbackStatus)
+        assertEquals(PlaybackStatus.IDLE, follower.playbackStatus)
     }
 }

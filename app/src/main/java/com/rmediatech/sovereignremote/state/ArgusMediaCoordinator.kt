@@ -214,15 +214,21 @@ class ArgusMediaCoordinator(
         guardedDevices.clear()
 
         scope.launch {
-            for (dev in allPartyDevices) {
-                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: halting playback & returning to home on ${dev.name} (${dev.ipAddress})")
-                // 1. Explicitly pause playback on the TV so sound and video stop instantly
-                registry.sendKey(dev, RemoteKey.PAUSE)
-                // 2. Return to home launcher screen so the TV cleanly exits video player
-                registry.sendKey(dev, RemoteKey.HOME)
-                // 3. Release wake lock / sleep guard leases and restore factory settings
-                registry.releaseSleepGuard(dev)
-            }
+            allPartyDevices.map { dev ->
+                async {
+                    SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: halting playback & returning to home on ${dev.name} (${dev.ipAddress})")
+                    // 1. Explicitly pause playback on the TV (with retry if transient drop occurs)
+                    if (registry.sendKey(dev, RemoteKey.PAUSE).isFailure) {
+                        registry.sendKey(dev, RemoteKey.PAUSE)
+                    }
+                    // 2. Return to home launcher screen so the TV cleanly exits video player
+                    if (registry.sendKey(dev, RemoteKey.HOME).isFailure) {
+                        registry.sendKey(dev, RemoteKey.HOME)
+                    }
+                    // 3. Release wake lock / sleep guard leases and restore factory settings
+                    registry.releaseSleepGuard(dev)
+                }
+            }.awaitAll()
         }
     }
 

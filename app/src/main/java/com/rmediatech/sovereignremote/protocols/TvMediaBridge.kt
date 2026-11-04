@@ -31,7 +31,7 @@ object TvMediaBridge {
 
     private val WAKE_TIME_REGEX = Regex("""mLastWakeTime=(\d+)\s*\((\d+)\s*ms ago\)""")
     private val PLAYBACK_STATE_REGEX = Regex(
-        """state=PlaybackState\s*\{state=(\d+),\s*position=(-?\d+),\s*buffered position=\d+,\s*speed=([0-9.]+),\s*updated=(\d+)"""
+        """state=PlaybackState\s*\{state=(?:[A-Z_]+\()?(\d+)\)?,\s*position=(-?\d+),\s*buffered position=-?\d+,\s*speed=(-?[0-9.]+),\s*updated=(\d+)"""
     )
     private val PACKAGE_REGEX = Regex("""package=([a-zA-Z0-9_.]+)""")
     private val DESCRIPTION_REGEX = Regex("""description=([^\r\n]+)""")
@@ -79,8 +79,8 @@ object TvMediaBridge {
             val rawStatus = PlaybackStatus.fromAndroidStateCode(stateCode)
             if (rawStatus == PlaybackStatus.IDLE && rawPos < 0L) continue
 
-            // A session with negative position and zero speed is buffering/uninitialized, not playing
-            val status = if (rawStatus == PlaybackStatus.PLAYING && rawPos < 0L && speed == 0.0f) {
+            // A session with negative position or zero speed is buffering/uninitialized, not actively playing
+            val status = if (rawStatus == PlaybackStatus.PLAYING && (rawPos < 0L || speed <= 0.0f)) {
                 PlaybackStatus.BUFFERING
             } else rawStatus
 
@@ -228,9 +228,11 @@ object TvMediaBridge {
             }
 
             // 2. Lockstep Playback Sync & Profile Picker Auto-Bypass
-            // If follower is stuck in BUFFERING/IDLE while leader is actively PLAYING, follower is trapped in Cobalt profile picker
+            // Only send SELECT if the follower explicitly reports a modal profile picker ("Who's watching?")
+            val isFollowerPicker = fState.title.contains("Who's watching", ignoreCase = true) ||
+                fState.title.contains("Choose an account", ignoreCase = true)
             if (leaderState.status == PlaybackStatus.PLAYING &&
-                (fState.status == PlaybackStatus.BUFFERING || (fState.status == PlaybackStatus.IDLE && fState.appPackage.contains("youtube"))) &&
+                isFollowerPicker &&
                 canSyncFollower(follower.ipAddress, nowMs)
             ) {
                 recordFollowerSync(follower.ipAddress, nowMs)

@@ -8,9 +8,13 @@ import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.RemoteDevice
 import com.rmediatech.sovereignremote.model.RemoteKey
 import dadb.AdbKeyPair
+import dadb.AdbShellStream
 import dadb.Dadb
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -37,6 +41,7 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     )
 
     private val dadbCache = ConcurrentHashMap<String, Dadb>()
+    private val shellStreamCache = ConcurrentHashMap<String, AdbShellStream>()
 
     private val keyPair: AdbKeyPair by lazy {
         val keyDir = context?.filesDir?.let { File(it, "adb") } ?: File(System.getProperty("java.io.tmpdir", "/tmp"), "adb")
@@ -52,6 +57,37 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
     private fun getDadb(ip: String, port: Int): Dadb {
         return dadbCache.computeIfAbsent("$ip:$port") {
             Dadb.create(ip, port, keyPair)
+        }
+    }
+
+    private fun getOrCreateShellStream(ip: String, port: Int, dadb: Dadb): AdbShellStream? {
+        val key = "$ip:$port"
+        shellStreamCache[key]?.let { return it }
+        return try {
+            val stream = dadb.openShell("")
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    while (isActive) stream.read()
+                } catch (_: Throwable) {
+                    shellStreamCache.remove(key)
+                }
+            }
+            shellStreamCache[key] = stream
+            stream
+        } catch (e: Exception) {
+            Log.w("GoogleTvProtocol", "Could not open persistent shell on $key: ${e.message}")
+            null
+        }
+    }
+
+    override fun resetConnections(ip: String?) {
+        if (ip == null) {
+            dadbCache.clear()
+            shellStreamCache.values.forEach { try { it.close() } catch (_: Exception) {} }
+            shellStreamCache.clear()
+        } else {
+            dadbCache.remove("$ip:5555")
+            shellStreamCache.remove("$ip:5555")?.let { try { it.close() } catch (_: Exception) {} }
         }
     }
 
@@ -86,8 +122,8 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             RemoteKey.INFO -> 176 // Android KEYCODE_SETTINGS (Quick Settings / Options on Google TV)
         }
 
-        // 1. Primary: Direct ADB control via port 5555
-        if (isPortOpen(device.ipAddress, 5555, 300)) {
+        // 1. Primary: Direct ADB control via port 5555 with persistent stream & self-healing retry
+        for (attempt in 1..2) {
             try {
                 val dadb = getDadb(device.ipAddress, 5555)
 
@@ -103,13 +139,13 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                             Log.i("GoogleTvProtocol", "TV ${device.ipAddress} is sleeping. Broadcasting WoL to MAC $mac...")
                             com.rmediatech.sovereignremote.net.WakeOnLan.wake(mac, device.ipAddress, context)
                         }
-                        for (attempt in 1..4) {
+                        for (wakeAttempt in 1..4) {
                             delay(250)
                             try {
                                 dadb.shell("input keyevent 224; sleep 0.1; input keyevent 3")
                                 val checkOut = dadb.shell("dumpsys power").allOutput
                                 if (checkOut.contains("mWakefulness=Awake") || checkOut.contains("Display Power: state=ON")) {
-                                    Log.i("GoogleTvProtocol", "TV screen awakened via ADB KEYCODE_WAKEUP on attempt $attempt")
+                                    Log.i("GoogleTvProtocol", "TV screen awakened via ADB KEYCODE_WAKEUP on attempt $wakeAttempt")
                                     break
                                 }
                             } catch (_: Exception) {}
@@ -119,14 +155,30 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
                         dadb.shell("input keyevent $keycode")
                         Log.d("GoogleTvProtocol", "Sent ADB POWER keyevent $keycode to ${device.ipAddress}")
                     }
-                } else {
-                    dadb.shell("input keyevent $keycode")
-                    Log.d("GoogleTvProtocol", "Sent ADB keyevent $keycode to ${device.ipAddress}")
+                    return@withContext Result.success(Unit)
                 }
+
+                val stream = getOrCreateShellStream(device.ipAddress, 5555, dadb)
+                if (stream != null) {
+                    try {
+                        synchronized(stream) { stream.write("input keyevent $keycode\n") }
+                        Log.d("GoogleTvProtocol", "Sent fast-stream ADB keyevent $keycode to ${device.ipAddress}")
+                        return@withContext Result.success(Unit)
+                    } catch (e: Exception) {
+                        shellStreamCache.remove("${device.ipAddress}:5555")?.let { try { it.close() } catch (_: Exception) {} }
+                        dadbCache.remove("${device.ipAddress}:5555")
+                        if (attempt == 1) continue
+                    }
+                }
+
+                dadb.shell("input keyevent $keycode")
+                Log.d("GoogleTvProtocol", "Sent ADB keyevent $keycode to ${device.ipAddress}")
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
-                Log.w("GoogleTvProtocol", "ADB command failed on ${device.ipAddress}: ${e.message}")
+                Log.w("GoogleTvProtocol", "ADB command failed on ${device.ipAddress} (attempt $attempt): ${e.message}")
+                shellStreamCache.remove("${device.ipAddress}:5555")?.let { try { it.close() } catch (_: Exception) {} }
                 dadbCache.remove("${device.ipAddress}:5555")
+                if (attempt == 1) continue
             }
         }
 
@@ -162,13 +214,17 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
 
     override suspend fun queryNowPlaying(device: RemoteDevice): NowPlayingState? = withContext(Dispatchers.IO) {
         if (!isPortOpen(device.ipAddress, 5555, 250)) return@withContext null
-        try {
-            val dadb = getDadb(device.ipAddress, 5555)
-            val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
-            TvMediaBridge.parseAdbMediaSession(dump)
-        } catch (_: Exception) {
-            null
+        for (attempt in 1..2) {
+            try {
+                val dadb = getDadb(device.ipAddress, 5555)
+                val dump = dadb.shell("dumpsys power | grep -E 'mWakefulness|Display Power|mScreenState|mLastWakeTime'; dumpsys media_session").allOutput
+                return@withContext TvMediaBridge.parseAdbMediaSession(dump)
+            } catch (_: Exception) {
+                resetConnections(device.ipAddress)
+                if (attempt == 1) continue
+            }
         }
+        null
     }
 
     override suspend fun launchMediaUri(
@@ -177,12 +233,17 @@ class GoogleTvProtocol(private val context: Context? = null) : SmartTvProtocol {
         source: CinemaSource
     ): Result<Unit> = withContext(Dispatchers.IO) {
         if (isPortOpen(device.ipAddress, 5555, 250)) {
-            try {
-                val dadb = getDadb(device.ipAddress, 5555)
-                val cmd = CinemaBeamPlanner.buildAdbBeamCommand(uriOrQuery, isFireTv = false, source = source)
-                dadb.shell(cmd)
-                return@withContext Result.success(Unit)
-            } catch (_: Exception) {}
+            val cmd = CinemaBeamPlanner.buildAdbBeamCommand(uriOrQuery, isFireTv = false, source = source)
+            for (attempt in 1..2) {
+                try {
+                    val dadb = getDadb(device.ipAddress, 5555)
+                    dadb.shell(cmd)
+                    return@withContext Result.success(Unit)
+                } catch (_: Exception) {
+                    resetConnections(device.ipAddress)
+                    if (attempt == 1) continue
+                }
+            }
         }
         val dialAppName = when (source) {
             CinemaSource.YOUTUBE -> "YouTube"
