@@ -99,11 +99,11 @@ class SovereignUserFlowHardwareCrucibleTest {
         assertTrue("Google TV must receive beam intent", googleTvNode.commandLog.any { it.startsWith("BEAM_URI") })
         assertTrue("Fire TV must receive beam intent", fireTvNode.commandLog.any { it.startsWith("BEAM_URI") })
 
-        // Verify Fire TV profile picker detection
-        assertTrue("Fire TV profile picker flag is active", fireTvNode.isShowingProfilePicker)
+        // Pre-flight profile picker bypass: Argus auto-dispatched SELECT so Fire TV is unmasked into PLAYING!
+        assertFalse("Fire TV profile picker must be automatically unmasked and dismissed by pre-flight bypass", fireTvNode.isShowingProfilePicker)
         val fireTvState = registry.queryNowPlaying(fireTvDev)
         assertNotNull(fireTvState)
-        assertEquals("Fire TV in profile picker must be BUFFERING, not PLAYING", PlaybackStatus.BUFFERING, fireTvState?.status)
+        assertEquals("Fire TV must be in PLAYING state after auto-bypass", PlaybackStatus.PLAYING, fireTvState?.status)
 
         // --- STEP 5: User presses Volume Up on physical rocker / UI ---
         // Fan out volume key to primary + followers
@@ -123,12 +123,13 @@ class SovereignUserFlowHardwareCrucibleTest {
         assertEquals("Fire TV volume stepped back to 15 in lockstep", 15, fireTvNode.volumeLevel)
 
         // --- STEP 6: User presses Play/Pause ---
+        // Both TVs are PLAYING. User pauses leader: fanout pauses follower in lockstep!
         googleTvNode.sendKey(googleTvDev, RemoteKey.PLAY_PAUSE)
         coordinator.fanoutTransportKeyIfWatchParty(RemoteKey.PLAY_PAUSE, currentPrimary, allDevices)
         testScheduler.runCurrent()
 
         assertEquals("Google TV toggled to PAUSED", PlaybackStatus.PAUSED, googleTvNode.playbackStatus)
-        assertEquals("Fire TV toggled to PLAYING from buffering", PlaybackStatus.PLAYING, fireTvNode.playbackStatus)
+        assertEquals("Fire TV toggled to PAUSED in lockstep", PlaybackStatus.PAUSED, fireTvNode.playbackStatus)
 
         // --- STEP 7: User swaps Leader in dropdown (selects Fire TV) ---
         coordinator.swapLeaderIfWatchParty(oldLeaderIp = googleTvDev.ipAddress, newLeaderIp = fireTvDev.ipAddress)

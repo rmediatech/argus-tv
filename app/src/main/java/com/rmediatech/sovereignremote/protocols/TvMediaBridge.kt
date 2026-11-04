@@ -1,5 +1,6 @@
 package com.rmediatech.sovereignremote.protocols
 
+import com.rmediatech.sovereignremote.logging.SovereignLogger
 import com.rmediatech.sovereignremote.model.NowPlayingState
 import com.rmediatech.sovereignremote.model.PlaybackStatus
 import com.rmediatech.sovereignremote.model.RemoteDevice
@@ -226,7 +227,18 @@ object TvMediaBridge {
                 continue
             }
 
-            // 2. Lockstep Playback Sync
+            // 2. Lockstep Playback Sync & Profile Picker Auto-Bypass
+            // If follower is stuck in BUFFERING/IDLE while leader is actively PLAYING, follower is trapped in Cobalt profile picker
+            if (leaderState.status == PlaybackStatus.PLAYING &&
+                (fState.status == PlaybackStatus.BUFFERING || (fState.status == PlaybackStatus.IDLE && fState.appPackage.contains("youtube"))) &&
+                canSyncFollower(follower.ipAddress, nowMs)
+            ) {
+                recordFollowerSync(follower.ipAddress, nowMs)
+                SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty auto-healing: Unmasking trapped profile picker on ${follower.name} via SELECT")
+                protocol.sendKey(follower, RemoteKey.SELECT)
+                continue
+            }
+
             if ((fState.status == PlaybackStatus.PLAYING || fState.status == PlaybackStatus.PAUSED) &&
                 fState.status != leaderState.status &&
                 canSyncFollower(follower.ipAddress, nowMs)

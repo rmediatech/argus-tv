@@ -276,8 +276,22 @@ class ArgusMediaCoordinator(
                 async { registry.launchMediaUri(dev, canonicalUri, source) }
             }.awaitAll()
             if (results.first().isSuccess) {
-                // Allow hardware renderers to acquire media sessions naturally without blind pause/play fighting
-                delay(2500)
+                // Pre-flight profile picker bypass: Fire TV Cobalt webview pauses at account selector
+                val fireTvTargets = allTargets.filter { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }
+                if (fireTvTargets.isNotEmpty()) {
+                    delay(2800)
+                    for (ftv in fireTvTargets) {
+                        val state = registry.queryNowPlaying(ftv)
+                        // If Fire TV has position == 0 / negative, speed == 0, or is buffering/idle, it is trapped on the Cobalt profile picker
+                        if (state == null || state.status != PlaybackStatus.PLAYING || state.positionMs <= 0L) {
+                            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight bypass: unsticking Fire TV ${ftv.name} from profile picker via SELECT")
+                            registry.sendKey(ftv, RemoteKey.SELECT)
+                        }
+                    }
+                }
+
+                // Allow hardware renderers to acquire media sessions naturally
+                delay(2000)
                 val refreshed = registry.queryNowPlaying(target)
                 nowPlaying = refreshed
             } else {
