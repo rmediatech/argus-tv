@@ -45,6 +45,15 @@ class VirtualTvHardwareNode(
     var playheadMs: Long = 0L
     var volumeLevel: Int = 15
 
+    // Interactive EPG Guide Telemetry
+    var isGuideActive: Boolean = false
+    var channelIndex: Int = 1
+
+    // Network & Wi-Fi Failure Simulation
+    var networkLatencyMs: Long = 0L
+    var simulateDropConnection: Boolean = false
+    var failNextKeys: Int = 0
+
     // Audit logs of all commands received
     val commandLog = CopyOnWriteArrayList<String>()
 
@@ -60,12 +69,33 @@ class VirtualTvHardwareNode(
     )
 
     override suspend fun sendKey(device: RemoteDevice, key: RemoteKey): Result<Unit> {
+        if (networkLatencyMs > 0) kotlinx.coroutines.delay(networkLatencyMs)
+        if (simulateDropConnection) {
+            return Result.failure(java.io.IOException("ADB socket disconnected on $ip:5555"))
+        }
+        if (failNextKeys > 0) {
+            failNextKeys--
+            return Result.failure(java.io.IOException("Transient Wi-Fi frame drop on $ip:5555"))
+        }
+
         commandLog.add("KEY:${key.name}")
         when (key) {
             RemoteKey.POWER -> isPoweredOn = !isPoweredOn
+            RemoteKey.HOME -> {
+                isGuideActive = false
+                isShowingProfilePicker = false
+                playbackStatus = PlaybackStatus.IDLE
+                activeApp = "launcher"
+            }
             RemoteKey.VOLUME_UP -> volumeLevel = (volumeLevel + 1).coerceAtMost(100)
             RemoteKey.VOLUME_DOWN -> volumeLevel = (volumeLevel - 1).coerceAtLeast(0)
             RemoteKey.MUTE -> volumeLevel = 0
+            RemoteKey.UP -> {
+                if (isGuideActive) channelIndex = maxOf(1, channelIndex - 1)
+            }
+            RemoteKey.DOWN -> {
+                if (isGuideActive) channelIndex++
+            }
             RemoteKey.PLAY_PAUSE -> {
                 playbackStatus = if (playbackStatus == PlaybackStatus.PLAYING) PlaybackStatus.PAUSED else PlaybackStatus.PLAYING
             }
@@ -76,6 +106,10 @@ class VirtualTvHardwareNode(
                     profilePickerDismissed = true
                     isShowingProfilePicker = false
                     playbackStatus = PlaybackStatus.PLAYING
+                } else if (isGuideActive) {
+                    isGuideActive = false
+                    playbackStatus = PlaybackStatus.PLAYING
+                    playheadMs = 1000L
                 }
             }
             else -> {}
@@ -84,20 +118,29 @@ class VirtualTvHardwareNode(
     }
 
     override suspend fun launchApp(device: RemoteDevice, appName: String): Result<Unit> {
+        if (networkLatencyMs > 0) kotlinx.coroutines.delay(networkLatencyMs)
         commandLog.add("LAUNCH_APP:$appName")
         activeApp = appName
         return Result.success(Unit)
     }
 
     override suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String, source: CinemaSource): Result<Unit> {
+        if (networkLatencyMs > 0) kotlinx.coroutines.delay(networkLatencyMs)
         commandLog.add("BEAM_URI:$uriOrQuery:SOURCE:${source.name}")
         activeApp = source.displayName
-        if (hasProfilePickerBug && !profilePickerDismissed) {
+        if (source.isInteractiveGuide) {
+            isGuideActive = true
+            channelIndex = 1
+            playbackStatus = PlaybackStatus.BUFFERING
+            isShowingProfilePicker = false
+        } else if (hasProfilePickerBug && !profilePickerDismissed) {
             isShowingProfilePicker = true
+            isGuideActive = false
             playbackStatus = PlaybackStatus.BUFFERING
             playheadMs = -1L
         } else {
             isShowingProfilePicker = false
+            isGuideActive = false
             playbackStatus = PlaybackStatus.PLAYING
             playheadMs = 1000L
         }

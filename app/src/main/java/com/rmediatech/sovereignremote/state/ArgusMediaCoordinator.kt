@@ -187,8 +187,12 @@ class ArgusMediaCoordinator(
      * both leader and follower TVs, restores factory power/sleep settings agnostically,
      * resets nowPlaying telemetry, and clears leases.
      */
-    fun stopWatchParty(allDevices: List<RemoteDevice> = emptyList()) {
+    fun stopWatchParty(
+        allDevices: List<RemoteDevice> = emptyList(),
+        currentPrimary: RemoteDevice? = null
+    ) {
         val targetIps = watchPartyIps
+        val savedLeaderIp = sessionStore.loadSession()?.leaderIp
         watchPartyIps = emptySet()
         followerTelemetry = emptyMap()
         healingSnapshot = null
@@ -199,6 +203,10 @@ class ArgusMediaCoordinator(
 
         val allPartyDevices = buildSet {
             addAll(guardedDevices.values)
+            if (currentPrimary != null) add(currentPrimary)
+            if (!savedLeaderIp.isNullOrBlank()) {
+                allDevices.find { it.ipAddress == savedLeaderIp }?.let { add(it) }
+            }
             for (ip in targetIps) {
                 allDevices.find { it.ipAddress == ip }?.let { add(it) }
             }

@@ -117,7 +117,7 @@ fun RemoteScreen(
                     onToggleDpadSync = { mediaCoordinator.toggleDpadMirror() },
                     onStopParty = {
                         performHaptic()
-                        mediaCoordinator.stopWatchParty(discoveredDevices)
+                        mediaCoordinator.stopWatchParty(discoveredDevices, currentDevice)
                     }
                 )
             }
@@ -145,7 +145,7 @@ fun RemoteScreen(
                     mediaCoordinator?.toggleWatchPartyDevice(ip, discoveredDevices, leaderIp = leader)
                 },
                 onStopParty = {
-                    mediaCoordinator?.stopWatchParty(discoveredDevices)
+                    mediaCoordinator?.stopWatchParty(discoveredDevices, currentDevice)
                 },
                 onBeamMedia = { q, src -> mediaCoordinator?.beamMediaToTv(currentDevice, q, discoveredDevices, src) },
                 onScanRequested = onScanRequested,
