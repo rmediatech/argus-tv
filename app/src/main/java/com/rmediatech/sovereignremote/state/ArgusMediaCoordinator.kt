@@ -303,9 +303,7 @@ class ArgusMediaCoordinator(
                 if (allTargets.size > 1 && anyBypassed) {
                     delay(2200) // Allow bypassed TV to authenticate and initialize player
                     SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Lockstep Parity: Re-aligning all ${allTargets.size} Watch Party TVs to origin (0:00)")
-                    val originUri = if (canonicalUri.contains("watch?v=") && !canonicalUri.contains("&t=")) {
-                        "$canonicalUri&t=0s"
-                    } else canonicalUri
+                    val originUri = CinemaBeamPlanner.buildOriginSyncUri(canonicalUri, source, offsetSeconds = 0L)
                     allTargets.map { dev ->
                         async { registry.launchMediaUri(dev, originUri, source) }
                     }.awaitAll()

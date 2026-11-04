@@ -68,6 +68,27 @@ object CinemaBeamPlanner {
         }
     }
 
+    /**
+     * Source-agnostic origin synchronizer: constructs a zero-offset seek URI for lockstep party alignment
+     * across disparate hardware displays without hardcoding vendor-specific patterns in caller lifecycles.
+     */
+    fun buildOriginSyncUri(
+        canonicalUri: String,
+        source: CinemaSource,
+        offsetSeconds: Long = 0L
+    ): String {
+        return when (source) {
+            CinemaSource.YOUTUBE -> {
+                if (canonicalUri.contains("watch?v=") && !canonicalUri.contains("&t=")) {
+                    "$canonicalUri&t=${offsetSeconds}s"
+                } else canonicalUri
+            }
+            CinemaSource.DIRECT_URL,
+            CinemaSource.PRIME_VIDEO,
+            CinemaSource.PLUTO_TV -> canonicalUri
+        }
+    }
+
     fun buildAdbBeamCommand(
         uriOrQuery: String,
         isFireTv: Boolean,
