@@ -144,8 +144,8 @@ object CinemaBeamPlanner {
                     val ytPkg = if (isFireTv) "com.amazon.firetv.youtube" else "com.google.android.youtube.tv"
                     val ytActivity = if (isFireTv) "$ytPkg/dev.cobalt.app.MainActivity"
                     else "$ytPkg/com.google.android.apps.youtube.tv.activity.ShellActivity"
-                    append("am start -a android.intent.action.VIEW -d '$targetUrl' --activity-single-top $ytActivity ")
-                    append("|| am start -a android.intent.action.VIEW -d '$targetUrl' --activity-single-top $ytPkg ")
+                    append("am start -a android.intent.action.VIEW -d '$targetUrl' $ytActivity ")
+                    append("|| am start -a android.intent.action.VIEW -d '$targetUrl' $ytPkg ")
                     append("|| am start -a android.intent.action.VIEW -d '$targetUrl'")
                 }
                 CinemaSource.PRIME_VIDEO -> {
@@ -163,10 +163,12 @@ object CinemaBeamPlanner {
                 CinemaSource.PLUTO_TV -> {
                     val plutoPkg = "tv.pluto.android"
                     if (safeInput.isBlank() || safeInput.equals("Live Guide", ignoreCase = true) || safeInput.contains("live-tv")) {
-                        append("am start -n $plutoPkg/.activity.SplashActivity ")
+                        append("am start -n $plutoPkg/com.paramount.android.pplus.features.splash.tv.SplashActivity ")
+                        append("|| am start -n $plutoPkg/.activity.SplashActivity ")
                         append("|| monkey -p $plutoPkg -c android.intent.category.LAUNCHER 1")
                     } else {
                         append("am start -a android.intent.action.VIEW -d '$targetUrl' $plutoPkg ")
+                        append("|| am start -n $plutoPkg/com.paramount.android.pplus.features.splash.tv.SplashActivity ")
                         append("|| am start -n $plutoPkg/.activity.SplashActivity ")
                         append("|| monkey -p $plutoPkg -c android.intent.category.LAUNCHER 1")
                     }

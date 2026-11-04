@@ -8,6 +8,18 @@ Every entry strictly complies with the Universal Sovereign Engineer-to-Engineer 
 
 ## [1.3.4] - 2026-11-03
 
+### Fixed
+- **[Protocol/Cobalt] Eradicated Phantom Profile Picker SELECT Keys & Single-Top Intent Block (`CinemaBeamPlanner.kt`, `ArgusMediaCoordinator.kt`)**:
+  - *Fleet Hardware Reality*: Live living room and bedroom telemetry unmasked two critical issues during multi-display Watch Party beams:
+    1. `CinemaBeamPlanner` passed `--activity-single-top` (`0x20000000`) on Android VIEW intents into Cobalt (`com.amazon.firetv.youtube/dev.cobalt.app.MainActivity`). When Cobalt was already running or in the background, Android OS logged `Warning: Activity not started, its current task has been brought to the front` and completely dropped the stream URL.
+    2. `ArgusMediaCoordinator.beamMediaToTv()` heuristically assumed any TV with `positionMs <= 0L` at $2.8\text{s}$ was "stuck on an account picker modal", firing a blind rogue `SELECT` key into the TV and re-beaming a second intent $2.2\text{s}$ later. Because every video stream starts at $0\text{s}$ while buffering, this heuristic falsely fired on authenticated playback, pausing YouTube or selecting random suggested videos and blasting the TV with an interrupting second intent.
+  - *Architectural Resolution*:
+    1. Removed `--activity-single-top` from Cobalt/YouTube beam commands, ensuring Android delivers the new video intent directly to the active instance (`intent has been delivered to currently running top-most instance`).
+    2. Restricted profile picker bypass strictly to instances where `state?.title` explicitly reports a modal account selector (`"Who's watching?"` or `"Choose an account"`). Normal video streams launch cleanly in parallel without rogue keystrokes or second-intent interruptions.
+    3. Updated Pluto TV launch routing to include `com.paramount.android.pplus.features.splash.tv.SplashActivity`, launching directly into the electronic program guide for universal D-pad channel navigation.
+    4. Added explicit follower ACK / failure telemetry in `fanoutKeyIfWatchParty()`.
+  - *Empirical Verification*: Verified directly against physical Google TV (`192.168.1.186`) and Fire TV Stick 4K Max (`192.168.1.158`) running concurrent lockstep playback of `xZpoyYeFo3E` at `speed=1.0`, followed by lockstep PAUSE (`speed=0.0`) and PLAY (`speed=1.0`). 108/108 automated tests pass 100% green.
+
 ### Added
 - **[Protocol/Interaction] Universal Watch Party Key & D-Pad Parity (`ArgusMediaCoordinator.kt`, `RemoteScreen.kt`)**:
   - *Fleet Hardware Reality*: User testing across heterogeneous streaming apps (YouTube, Pluto TV, direct streams) demonstrated that conditional D-pad gating (restricting D-pad fanout unless an app was explicitly classified as an interactive guide) introduced friction and unpredictable control behavior. When an operator is in Watch Party mode controlling a room of displays, every directional keystroke (`UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`, `BACK`, `HOME`), transport action (`PLAY_PAUSE`, `REWIND`, `FAST_FORWARD`), and acoustic command (`VOLUME_UP`, `VOLUME_DOWN`, `MUTE`) must fan out across all linked displays in 100% lockstep parity.

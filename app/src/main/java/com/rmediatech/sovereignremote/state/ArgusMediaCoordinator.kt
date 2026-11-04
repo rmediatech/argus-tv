@@ -266,7 +266,12 @@ class ArgusMediaCoordinator(
             TvMediaBridge.recordFollowerSync(follower.ipAddress, now)
             scope.launch {
                 SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty lockstep parity fanout $key -> ${follower.name} (${follower.ipAddress})")
-                registry.sendKey(follower, key)
+                val dispatch = registry.sendKey(follower, key)
+                if (dispatch.isSuccess) {
+                    SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty lockstep parity ACK received for $key from ${follower.ipAddress}")
+                } else {
+                    SovereignLogger.w(SovereignLogger.Category.PROTOCOL, "WatchParty fanout $key FAILED to ${follower.ipAddress}: ${dispatch.exceptionOrNull()?.message}")
+                }
             }
         }
     }
@@ -316,13 +321,15 @@ class ArgusMediaCoordinator(
             }.awaitAll()
             if (results.first().isSuccess) {
                 // TV-Model-Agnostic Profile Picker Bypass:
-                // Any smart TV display (Fire TV, Roku, Google TV, Samsung Tizen) whose runtime presents
-                // a multi-account "Who's watching?" picker stalls with position <= 0 or BUFFERING/IDLE.
-                delay(2800)
+                // Only dismiss if a TV specifically reports a modal account picker modal ("Who's watching?")
+                // Normal streams must never be interrupted with blind rogue SELECT keys or re-beams.
+                delay(2000)
                 var anyBypassed = false
                 for (dev in allTargets) {
                     val state = registry.queryNowPlaying(dev)
-                    if (state == null || state.status != PlaybackStatus.PLAYING || state.positionMs <= 0L) {
+                    val isPicker = state?.title?.contains("Who's watching", ignoreCase = true) == true ||
+                        state?.title?.contains("Choose an account", ignoreCase = true) == true
+                    if (isPicker) {
                         SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight bypass: unsticking ${dev.name} (${dev.deviceType}) from modal profile picker via SELECT")
                         registry.sendKey(dev, RemoteKey.SELECT)
                         anyBypassed = true
@@ -330,10 +337,10 @@ class ArgusMediaCoordinator(
                 }
 
                 // Lockstep Party Parity Alignment:
-                // If multiple TVs are in Watch Party and any device required a profile bypass while
-                // others were already streaming, re-align all screens to 0:00 in lockstep so both TVs play at the exact same frame!
+                // If a TV genuinely required an account picker dismissal while others started streaming,
+                // re-align all screens to 0:00 in lockstep so both TVs play at the exact same frame.
                 if (allTargets.size > 1 && anyBypassed) {
-                    delay(2200) // Allow bypassed TV to authenticate and initialize player
+                    delay(2000)
                     SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Lockstep Parity: Re-aligning all ${allTargets.size} Watch Party TVs to origin (0:00)")
                     val originUri = CinemaBeamPlanner.buildOriginSyncUri(canonicalUri, source, offsetSeconds = 0L)
                     allTargets.map { dev ->
@@ -342,7 +349,7 @@ class ArgusMediaCoordinator(
                 }
 
                 // Allow hardware renderers to acquire media sessions naturally
-                delay(1800)
+                delay(1200)
                 val refreshed = registry.queryNowPlaying(target)
                 nowPlaying = refreshed
             } else {
