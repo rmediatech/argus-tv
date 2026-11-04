@@ -2,8 +2,8 @@
 
 <div align="center">
 
-[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.3.0)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.3.0/argus-v1.3.0.apk)
-[![Version](https://img.shields.io/badge/Version-v1.3.0-blue?style=for-the-badge)](CHANGELOG.md)
+[![Download Signed APK](https://img.shields.io/badge/Download-Signed%20APK%20(v1.3.5)-10B981?style=for-the-badge&logo=android&logoColor=black)](https://github.com/rmediatech/argus-tv/releases/download/v1.3.5/argus-v1.3.5.apk)
+[![Version](https://img.shields.io/badge/Version-v1.3.5-blue?style=for-the-badge)](CHANGELOG.md)
 [![RMediaTech Official](https://img.shields.io/badge/RMediaTech-Official%20Fleet-FFB300?style=for-the-badge&logo=shield&logoColor=black)](https://rmediatech.com)
 [![Zero Ads](https://img.shields.io/badge/Zero--Ads-100%25%20Private-00F5FF?style=for-the-badge)](https://rmediatech.com)
 
@@ -58,42 +58,49 @@ Unlike commercial remote apps from the Google Play Store that demand account log
 
 ---
 
-## 🎬 Sovereign Cinema Beam & Multi-Room Watch Party
+## 🎬 Sovereign Cinema Beam & Multi-Room Watch Party (v1.3.5)
 
-Argus v1.1.0 introduces the **Sovereign Cinema Engine** — direct hardware playback observation, mobile-to-TV keyboard beaming, and zero-cloud multi-TV watch party lockstep synchronization:
+Argus features the **Sovereign Cinema Engine** — direct hardware playback observation, source-agnostic mobile-to-TV keyboard beaming, and zero-cloud multi-TV watch party lockstep synchronization:
 
 ```text
 ┌────────────────────────────────────────────────────────┐
 │ SOVEREIGN CINEMA & WATCH PARTY          Quick Steps ℹ️ │
+│ 🛡️ LOCKSTEP D-PAD & MEDIA PARITY ACTIVE [2 SCREENS]    │
 ├────────────────────────────────────────────────────────┤
 │ YouTube • PLAYING                                      │
-│ Stephen King's Needful Things (1993) [Full Movie]      │
-│ Hardware Playhead: 01:23:36 (5016278 ms)               │
+│ Sovereign Living Room Fleet Cinema [4K Ultra HD]       │
+│ Hardware Playhead: 00:24:12 (1452000 ms) • Speed 1.0x  │
 ├────────────────────────────────────────────────────────┤
-│ BEAM MOVIE SEARCH OR YOUTUBE URL                       │
-│ [ Stephen King Needful Things                        ] │
+│ BEAM STREAM / LIVE GUIDE (SOURCE AGNOSTIC)             │
+│ [ YouTube | Pluto TV | Prime Video | Direct HLS      ] │
+│ [ Search Title or Direct Video URL                   ] │
 │ [              BEAM STRAIGHT TO TV                   ] │
 ├────────────────────────────────────────────────────────┤
-│ MULTI-TV WATCH PARTY SYNC (PLAY/PAUSE LOCKSTEP)        │
-│ • Bedroom TV (192.168.1.102)                  [SYNCED] │
-│ • Kitchen Display (192.168.1.103)             [SYNCED] │
+│ MULTI-TV WATCH PARTY SYNC (LOCKSTEP FANOUT)            │
+│ • Living Room TV (192.168.1.186)              [LEADER] │
+│ • Bedroom TV (192.168.1.158)                  [SYNCED] │
+│                                                        │
+│ [🛑 STOP PARTY & RETURN ALL SCREENS TO HOME LAUNCHER ] │
 └────────────────────────────────────────────────────────┘
 ```
 
-### 1. Direct Movie Search & URL Beaming (No D-Pad Pecking)
-1. Tap the **`🎬`** pill right above the playback transport buttons.
-2. In the beam box, type a title (e.g. `Needful Things 1993`) or paste any direct YouTube / media URL from your phone clipboard.
-3. Tap **"Beam Straight to TV"** — Argus launches the media app and fires the query in milliseconds, bypassing tedious TV on-screen keyboards.
+### 1. Universal Control Parity Across All Party TVs
+* **100% Lockstep Navigation**: In Watch Party mode, directional navigation (`UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`, `BACK`, `HOME`), transport keys (`PLAY_PAUSE`, `PLAY`, `PAUSE`, `REWIND`, `FAST_FORWARD`), and acoustic commands (`VOLUME_UP`, `VOLUME_DOWN`, `MUTE`) broadcast to all linked displays in parallel lockstep.
+* **Source-Adaptive Beam Planning**:
+  * **On-Demand Video (YouTube)**: Resolves canonical video URIs and dispatches direct view intents across all screens.
+  * **Linear Live TV & EPG Guides (Pluto TV)**: Launches directly into the electronic program guide (`SplashActivity`), allowing simultaneous channel surfing across all displays with the shared D-pad.
+  * **Direct Streams (HLS / MP4)**: Direct MIME-typed broadcast to native video renderers.
+* **Seamless Unicast Fallback**: As soon as the Watch Party ends (via **STOP PARTY** or clearing followers), remote controls instantly revert to strict single-device unicast routing on the currently selected TV with zero cross-network leakage.
 
-### 2. Multi-Room Watch Party Sync (Lockstep Play/Pause)
-1. Open the Cinema dialog on your active "Master" TV.
-2. Under **MULTI-TV WATCH PARTY SYNC**, tap any follower TV on your home network to mark it **`SYNCED`**.
-3. Pressing **Play** or **Pause** on your Argus remote immediately coordinates all synced TVs in unison with sub-5ms local TCP dispatch, eliminating echo between rooms.
+### 2. Microsecond Sub-10ms Persistent Multiplexing
+* **Dual-Engine ADB Shell Multiplexing**: Both Amazon Fire TV and Google TV utilize persistent interactive `AdbShellStream` instances over port 5555. Bypasses repetitive socket handshakes, cutting key dispatch latency from $500\text{--}870\text{ms}$ down to $<10\text{ms}$.
+* **Two-Attempt Socket Self-Healing**: Automatically catches stale or dropped ADB sockets during long movie playbacks, evicts dead TCP descriptors, reconnects in milliseconds, and retries the command transparently without dropping user inputs.
 
-### 3. Non-DRM Hardware Playhead Telemetry
-* Directly calculates millisecond playheads from OS kernel wake clocks without touching protected DRM video surfaces.
-* Pairs seamlessly with the Rust workstation companion: `argus cinema --srt movie.srt` for live desktop scene dialogue tracking.
-* See the full specification in [docs/CINEMA_WATCH_PARTY.md](docs/CINEMA_WATCH_PARTY.md).
+### 3. Non-DRM Hardware Playhead Telemetry & Auto-Healing
+* **Android 11+ Symbolic State Parsing**: Decodes both classic numeric state codes (`state=3`) and modern symbolic strings (`state=PLAYING(3)`, `state=PAUSED(2)`) directly from `dumpsys media_session`.
+* **Zero-Speed Idle Defense**: Reclassifies zero-velocity states (`state=3, position=0, speed=0.0`) as `BUFFERING` to prevent false playback reports while video buffers.
+* **Auto-Healing Sentinel**: Classifies playhead drift mathematically (Green $<500\text{ms}$, Yellow $500\text{--}2500\text{ms}$, Red $>2500\text{ms}$) with cooldown anti-flapping guardrails, applying sub-perceptual slipstream micro-pauses strictly when both displays are playing the same title.
+* **Unified Teardown**: Halts playback on all linked displays simultaneously with concurrent `PAUSE` + `HOME` dispatches, restores factory sleep policies, and resets telemetry leases in unison.
 
 ---
 

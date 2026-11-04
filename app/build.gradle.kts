@@ -21,8 +21,8 @@ android {
         applicationId = "com.rmediatech.sovereignremote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.3.3"
+        versionCode = 10
+        versionName = "1.3.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

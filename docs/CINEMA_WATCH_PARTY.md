@@ -42,7 +42,7 @@ Searching for movies or navigating URLs using a standard directional D-pad on an
 
 ---
 
-### Step 3: Multi-TV Watch Party Sync (Lockstep Play/Pause)
+### Step 3: Multi-TV Watch Party Sync (Universal Lockstep Parity)
 If you have multiple Smart TVs or displays in different rooms (e.g. Living Room, Bedroom, Garage):
 
 1. Open the **Cinema Beam Dialog** by tapping the **`🎬`** pill.
@@ -50,10 +50,14 @@ If you have multiple Smart TVs or displays in different rooms (e.g. Living Room,
 3. You will see all other discovered TVs on your home network.
 4. **Tap any TV to toggle synchronization**:
    * When marked **`SYNCED`**, that device enters lockstep follower mode.
-5. Whenever you press **Play**, **Pause**, or **Stop** on your Argus remote:
-   * Argus sends the command to your active Master TV.
-   * Argus automatically relays synchronized playback commands to all Synced follower TVs simultaneously over local Wi-Fi.
-6. To desynchronize a room, simply tap the device again to return it to **`TAP TO SYNC`**.
+   * A luminous **WATCH PARTY SHIELD** HUD chip appears on the main remote showing screens linked and status.
+5. **Universal Key & D-Pad Parity**:
+   * **Directional D-Pad**: Pressing `UP`, `DOWN`, `LEFT`, `RIGHT`, `SELECT`, `BACK`, or `HOME` broadcasts to all synced TVs in unison. Surf live channel guides (Pluto TV) or browse menus across displays simultaneously.
+   * **Media Transport**: `PLAY_PAUSE`, `PLAY`, `PAUSE`, `REWIND`, `FAST_FORWARD` operate in strict parallel lockstep.
+   * **Acoustic Volume**: `VOLUME_UP`, `VOLUME_DOWN`, and `MUTE` adjust all displays in lockstep.
+6. **🛑 One-Touch Unison Teardown**:
+   * Tap the red **STOP PARTY** pill on the remote HUD.
+   * Argus immediately dispatches concurrent `PAUSE` and `HOME` commands to every linked TV in parallel, releases sleep guards, and seamlessly reverts control to single-device unicast on your selected TV.
 
 ---
 
