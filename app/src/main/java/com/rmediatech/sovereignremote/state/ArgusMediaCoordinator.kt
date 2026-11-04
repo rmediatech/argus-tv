@@ -120,7 +120,7 @@ class ArgusMediaCoordinator(
         val toRelease = guardedDevices.values.toList()
         guardedDevices.clear()
         if (toRelease.isEmpty()) return
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
             for (dev in toRelease) {
                 SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Releasing TV sleep guard on exit for ${dev.name} (${dev.ipAddress})")
                 registry.releaseSleepGuard(dev)
@@ -133,12 +133,12 @@ class ArgusMediaCoordinator(
         watchPartyIps = if (removing) watchPartyIps - ip else watchPartyIps + ip
         if (removing) {
             guardedDevices.remove(ip)?.let { dev ->
-                scope.launch(Dispatchers.IO) { registry.releaseSleepGuard(dev) }
+                scope.launch { registry.releaseSleepGuard(dev) }
             }
         } else {
             allDevices.find { it.ipAddress == ip }?.let { dev ->
                 guardedDevices[ip] = dev
-                scope.launch(Dispatchers.IO) { registry.acquireSleepGuard(dev) }
+                scope.launch { registry.acquireSleepGuard(dev) }
             }
         }
     }
@@ -176,7 +176,7 @@ class ArgusMediaCoordinator(
         val now = System.currentTimeMillis()
         for (follower in followers) {
             TvMediaBridge.recordFollowerSync(follower.ipAddress, now)
-            scope.launch(Dispatchers.IO) {
+            scope.launch {
                 SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "WatchParty parallel fanout $key -> ${follower.name} (${follower.ipAddress})")
                 registry.sendKey(follower, key)
             }
@@ -192,13 +192,13 @@ class ArgusMediaCoordinator(
         queryOrUrl: String,
         allDevices: List<RemoteDevice> = emptyList(),
         source: CinemaSource = CinemaSource.YOUTUBE
-    ) {
+    ): Job? {
         val target = device ?: run {
             Toast.makeText(context, "Select a TV first", Toast.LENGTH_SHORT).show()
-            return
+            return null
         }
         val clean = queryOrUrl.trim()
-        if (clean.isBlank()) return
+        if (clean.isBlank()) return null
 
         val followers = allDevices.filter {
             it.ipAddress != target.ipAddress && watchPartyIps.contains(it.ipAddress)
@@ -206,20 +206,22 @@ class ArgusMediaCoordinator(
         val allTargets = listOf(target) + followers
         val label = if (followers.isEmpty()) target.name else "${allTargets.size} Watch Party TVs"
         SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Beaming [${source.displayName}] '$clean' -> $label")
-        Toast.makeText(context, "Beaming ${source.displayName} to $label...", Toast.LENGTH_SHORT).show()
+        try {
+            Toast.makeText(context, "Beaming ${source.displayName} to $label...", Toast.LENGTH_SHORT)?.show()
+        } catch (_: Exception) {}
 
-        scope.launch {
+        return scope.launch {
             // 1. Resolve canonical stream URI per source
             val canonicalUri = CinemaBeamPlanner.resolveMediaUri(clean, source)
             SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Resolved [${source.displayName}] canonical: '$canonicalUri'")
 
             val results = allTargets.map { dev ->
-                async(Dispatchers.IO) { registry.launchMediaUri(dev, canonicalUri, source) }
+                async { registry.launchMediaUri(dev, canonicalUri, source) }
             }.awaitAll()
             if (results.first().isSuccess) {
                 // Allow hardware renderers to acquire media sessions naturally without blind pause/play fighting
                 delay(2500)
-                val refreshed = withContext(Dispatchers.IO) { registry.queryNowPlaying(target) }
+                val refreshed = registry.queryNowPlaying(target)
                 nowPlaying = refreshed
             } else {
                 Toast.makeText(context, "Beam failed: ${results.first().exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
