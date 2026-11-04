@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,7 @@ import kotlinx.coroutines.delay
 
 /**
  * Media Transport Playback Row (Rewind, Play/Pause, Fast-Forward), Now-Playing Pill, and Volume/Mute cluster.
+ * Ergonomically optimized for natural mobile thumb reach with smooth 16dp radiuses and tactile feedback.
  */
 @Composable
 fun PlaybackVolumeBar(
@@ -54,12 +56,23 @@ fun PlaybackVolumeBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 4.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(palette.surfaceElevated)
-                .border(1.dp, if (nowPlaying?.status == PlaybackStatus.PLAYING) palette.primaryAccent else palette.border, RoundedCornerShape(12.dp))
+                .padding(bottom = 6.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            palette.surfaceElevated,
+                            palette.surface
+                        )
+                    )
+                )
+                .border(
+                    1.dp,
+                    if (nowPlaying?.status == PlaybackStatus.PLAYING) palette.primaryAccent.copy(alpha = 0.8f) else palette.border,
+                    RoundedCornerShape(14.dp)
+                )
                 .clickable { performHaptic(); onOpenCinemaDialog() }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -88,45 +101,53 @@ fun PlaybackVolumeBar(
 
             Row(
                 modifier = Modifier
-                    .padding(start = 6.dp)
+                    .padding(start = 8.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(palette.primaryAccent.copy(alpha = 0.2f))
-                    .border(1.dp, palette.primaryAccent.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                    .background(palette.primaryAccent.copy(alpha = 0.16f))
+                    .border(1.dp, palette.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "$badgeLabel$playheadLabel",
                     color = palette.primaryAccent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
                 )
             }
         }
+
         // --- PLAYBACK CONTROLS ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp),
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.REWIND) }) {
-                Icon(icons.rewind, contentDescription = "Rev", tint = palette.textSecondary, modifier = Modifier.size(28.dp))
+            IconButton(
+                onClick = { performHaptic(); onSendKey(RemoteKey.REWIND) },
+                modifier = Modifier.size(50.dp)
+            ) {
+                Icon(icons.rewind, contentDescription = "Rev", tint = palette.textSecondary, modifier = Modifier.size(26.dp))
             }
             Box(
                 modifier = Modifier
-                    .size(50.dp)
+                    .size(52.dp)
                     .clip(CircleShape)
                     .background(palette.surfaceElevated)
-                    .border(1.dp, palette.border, CircleShape)
+                    .border(1.2.dp, palette.primaryAccent.copy(alpha = 0.6f), CircleShape)
                     .clickable { performHaptic(); onSendKey(RemoteKey.PLAY_PAUSE) },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icons.playPause, contentDescription = "Play/Pause", tint = palette.primaryAccent, modifier = Modifier.size(30.dp))
+                Icon(icons.playPause, contentDescription = "Play/Pause", tint = palette.primaryAccent, modifier = Modifier.size(28.dp))
             }
-            IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.FAST_FORWARD) }) {
-                Icon(icons.fastForward, contentDescription = "Fwd", tint = palette.textSecondary, modifier = Modifier.size(28.dp))
+            IconButton(
+                onClick = { performHaptic(); onSendKey(RemoteKey.FAST_FORWARD) },
+                modifier = Modifier.size(50.dp)
+            ) {
+                Icon(icons.fastForward, contentDescription = "Fwd", tint = palette.textSecondary, modifier = Modifier.size(26.dp))
             }
         }
 
@@ -139,17 +160,26 @@ fun PlaybackVolumeBar(
                 .clip(RoundedCornerShape(16.dp))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(16.dp))
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.VOLUME_DOWN) }) {
+            IconButton(
+                onClick = { performHaptic(); onSendKey(RemoteKey.VOLUME_DOWN) },
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(icons.volDown, contentDescription = "Vol -", tint = palette.textPrimary)
             }
-            IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.MUTE) }) {
+            IconButton(
+                onClick = { performHaptic(); onSendKey(RemoteKey.MUTE) },
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(icons.mute, contentDescription = "Mute", tint = palette.powerColor)
             }
-            IconButton(onClick = { performHaptic(); onSendKey(RemoteKey.VOLUME_UP) }) {
+            IconButton(
+                onClick = { performHaptic(); onSendKey(RemoteKey.VOLUME_UP) },
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(icons.volUp, contentDescription = "Vol +", tint = palette.textPrimary)
             }
         }

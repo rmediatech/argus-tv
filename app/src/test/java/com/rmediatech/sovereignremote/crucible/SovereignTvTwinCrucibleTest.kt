@@ -206,4 +206,54 @@ class SovereignTvTwinCrucibleTest {
         )
         assertTrue("Clean launch after stop must have empty party", coordinatorSession3.watchPartyIps.isEmpty())
     }
+
+    @Test
+    fun testMidPartySearchAndReBeam_FollowersMaintainSynchronization() = kotlinx.coroutines.test.runTest {
+        val app = android.app.Application()
+        val registry = com.rmediatech.sovereignremote.protocols.TvProtocolRegistry(context = null)
+        val gtv = VirtualTvHardwareNode("gtv_leader", "Google TV Living Room", DeviceType.GOOGLE_TV, "192.168.1.186")
+        val ftv = VirtualTvHardwareNode("ftv_follower", "Fire TV Bedroom", DeviceType.FIRE_TV, "192.168.1.158")
+        registry.register(gtv)
+        registry.register(ftv)
+        val allDevs = listOf(gtv.toRemoteDevice(), ftv.toRemoteDevice())
+
+        val coordinator = com.rmediatech.sovereignremote.state.ArgusMediaCoordinator(
+            context = app,
+            scope = this,
+            registry = registry
+        )
+
+        // 1. Initial Beam: Start party with movie query A
+        coordinator.toggleWatchPartyDevice(ftv.ip, allDevs, leaderIp = gtv.ip)
+        testScheduler.runCurrent()
+        assertTrue("Fire TV must be synced in watch party", coordinator.watchPartyIps.contains(ftv.ip))
+
+        val beamJob1 = coordinator.beamMediaToTv(gtv.toRemoteDevice(), "Sovereign Inception", allDevs, com.rmediatech.sovereignremote.model.CinemaSource.YOUTUBE)
+        beamJob1?.join()
+        testScheduler.runCurrent()
+
+        val gtvBeams1 = gtv.commandLog.filter { it.startsWith("BEAM_URI:") }
+        val ftvBeams1 = ftv.commandLog.filter { it.startsWith("BEAM_URI:") }
+        assertEquals("Google TV must receive initial beam", 1, gtvBeams1.size)
+        assertTrue("Google TV beam contains query", gtvBeams1[0].contains("Sovereign") || gtvBeams1[0].contains("youtube.com"))
+        assertEquals("Fire TV must receive initial beam via fanout", 1, ftvBeams1.size)
+        assertTrue("Fire TV beam contains query", ftvBeams1[0].contains("Sovereign") || ftvBeams1[0].contains("youtube.com"))
+
+        // 2. Mid-Party Search & Re-Beam: User inputs search term B while party is running
+        val beamJob2 = coordinator.beamMediaToTv(gtv.toRemoteDevice(), "Interstellar Docking Scene", allDevs, com.rmediatech.sovereignremote.model.CinemaSource.YOUTUBE)
+        beamJob2?.join()
+        testScheduler.runCurrent()
+
+        val gtvBeams2 = gtv.commandLog.filter { it.startsWith("BEAM_URI:") }
+        val ftvBeams2 = ftv.commandLog.filter { it.startsWith("BEAM_URI:") }
+        assertEquals("Google TV must receive second beam", 2, gtvBeams2.size)
+        assertTrue("Google TV second beam contains updated query", gtvBeams2[1].contains("Interstellar") || gtvBeams2[1].contains("youtube.com"))
+        assertEquals("Fire TV must receive second beam via lockstep fanout", 2, ftvBeams2.size)
+        assertTrue("Fire TV second beam contains updated query", ftvBeams2[1].contains("Interstellar") || ftvBeams2[1].contains("youtube.com"))
+
+        // Tear down cleanly
+        coordinator.stopWatchParty(allDevs)
+        testScheduler.runCurrent()
+        assertTrue(coordinator.watchPartyIps.isEmpty())
+    }
 }

@@ -1,6 +1,7 @@
 package com.rmediatech.sovereignremote.ui.theme
 
 enum class ThemeLayoutType {
+    NATURAL_CIRCULAR, // SST Natural: Ergonomic curved touch pad with glass center
     RADAR_CIRCULAR,   // Cyber Tactical: circular precision radar D-Pad with glowing center
     GEOMETRIC_PAD,    // Nordic Minimalist: modern rounded trackpad surface with subtle boundary glow
     RETRO_CROSS,      // Retro Console: classic arcade cross D-Pad (+) with dedicated A/B action buttons

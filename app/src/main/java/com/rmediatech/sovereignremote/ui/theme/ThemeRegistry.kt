@@ -9,6 +9,19 @@ object ThemeRegistry {
 
     fun getPalette(preset: ThemePreset): ThemePalette {
         return when (preset) {
+            ThemePreset.SST_NATURAL -> ThemePalette(
+                background = Color(0xFF0B0F17),        // Deep Obsidian Slate
+                surface = Color(0xFF131926),           // Velvet Glass
+                surfaceElevated = Color(0xFF1E2638),   // Floating Slate
+                border = Color(0xFF2B374E),            // Subtle Titanium Rim
+                primaryAccent = Color(0xFF38BDF8),     // Luminous Sapphire Azure
+                secondaryAccent = Color(0xFF818CF8),   // Electric Indigo
+                powerColor = Color(0xFFF43F5E),        // Coral Rose Power
+                textPrimary = Color(0xFFF8FAFC),
+                textSecondary = Color(0xFF94A3B8),
+                textMuted = Color(0xFF475569)
+            )
+
             ThemePreset.CYBER_TACTICAL -> ThemePalette(
                 background = Color(0xFF080C14),
                 surface = Color(0xFF111726),
@@ -65,6 +78,25 @@ object ThemeRegistry {
 
     fun getIcons(preset: ThemePreset): ThemeIcons {
         return when (preset) {
+            ThemePreset.SST_NATURAL -> ThemeIcons(
+                power = Icons.Rounded.PowerSettingsNew,
+                back = Icons.AutoMirrored.Rounded.ArrowBack,
+                home = Icons.Rounded.Home,
+                options = Icons.Rounded.MoreVert,
+                up = Icons.Rounded.KeyboardArrowUp,
+                down = Icons.Rounded.KeyboardArrowDown,
+                left = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                right = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                selectLabel = "OK",
+                playPause = Icons.Rounded.PlayArrow,
+                rewind = Icons.Rounded.FastRewind,
+                fastForward = Icons.Rounded.FastForward,
+                volUp = Icons.AutoMirrored.Rounded.VolumeUp,
+                volDown = Icons.AutoMirrored.Rounded.VolumeDown,
+                mute = Icons.AutoMirrored.Rounded.VolumeMute,
+                themeSwitcher = Icons.Rounded.AutoAwesome
+            )
+
             ThemePreset.CYBER_TACTICAL -> ThemeIcons(
                 power = Icons.Rounded.PowerSettingsNew,
                 back = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -145,6 +177,7 @@ object ThemeRegistry {
 
     fun getLayout(preset: ThemePreset): ThemeLayoutType {
         return when (preset) {
+            ThemePreset.SST_NATURAL -> ThemeLayoutType.NATURAL_CIRCULAR
             ThemePreset.CYBER_TACTICAL -> ThemeLayoutType.RADAR_CIRCULAR
             ThemePreset.NORDIC_MINIMALIST -> ThemeLayoutType.GEOMETRIC_PAD
             ThemePreset.RETRO_CONSOLE -> ThemeLayoutType.RETRO_CROSS

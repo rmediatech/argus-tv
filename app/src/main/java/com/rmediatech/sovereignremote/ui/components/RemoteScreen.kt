@@ -98,6 +98,7 @@ fun RemoteScreen(
 
             // 3. CENTRAL THEME CONTROLLER
             when (layout) {
+                ThemeLayoutType.NATURAL_CIRCULAR -> NaturalCircularController(onSendKey, ::performHaptic)
                 ThemeLayoutType.RADAR_CIRCULAR -> RadarCircularController(onSendKey, ::performHaptic)
                 ThemeLayoutType.GEOMETRIC_PAD -> GeometricPadController(onSendKey, ::performHaptic)
                 ThemeLayoutType.RETRO_CROSS -> RetroCrossController(onSendKey, ::performHaptic)

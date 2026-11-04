@@ -7,6 +7,13 @@ enum class ThemePreset(
     val primaryAccentHex: Long,
     val previewBgHex: Long
 ) {
+    SST_NATURAL(
+        id = "sst_natural",
+        displayName = "SST Natural",
+        tagLine = "Ergonomic Flagship Mobile Glass & Sapphire Azure",
+        primaryAccentHex = 0xFF38BDF8, // Luminous Sapphire Azure
+        previewBgHex = 0xFF0B0F17
+    ),
     CYBER_TACTICAL(
         id = "cyber_tactical",
         displayName = "Cyber Tactical",
@@ -38,7 +45,7 @@ enum class ThemePreset(
 
     companion object {
         fun fromId(id: String?): ThemePreset {
-            return entries.find { it.id.equals(id, ignoreCase = true) } ?: CYBER_TACTICAL
+            return entries.find { it.id.equals(id, ignoreCase = true) } ?: SST_NATURAL
         }
     }
 }

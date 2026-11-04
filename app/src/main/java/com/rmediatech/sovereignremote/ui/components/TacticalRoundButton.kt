@@ -21,7 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Reusable Tactical Round Button with responsive visual press-feedback and haptic support.
+ * Reusable Tactical Round Button with responsive visual press-feedback,
+ * ergonomic 52dp mobile touch target boundary, and haptic support.
  */
 @Composable
 fun TacticalRoundButton(
@@ -34,21 +35,24 @@ fun TacticalRoundButton(
     var isPressed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(64.dp)
+    ) {
         Box(
             modifier = Modifier
-                .size(54.dp)
+                .size(52.dp)
                 .clip(CircleShape)
-                .background(if (isPressed) accentColor.copy(alpha = 0.25f) else palette.surface)
+                .background(if (isPressed) accentColor.copy(alpha = 0.22f) else palette.surfaceElevated.copy(alpha = 0.7f))
                 .border(
-                    width = if (isPressed) 2.dp else 1.dp,
-                    color = if (isPressed) accentColor else accentColor.copy(alpha = 0.6f),
+                    width = if (isPressed) 1.8.dp else 1.dp,
+                    color = if (isPressed) accentColor else palette.border.copy(alpha = 0.8f),
                     shape = CircleShape
                 )
                 .clickable {
                     scope.launch {
                         isPressed = true
-                        delay(150)
+                        delay(120)
                         isPressed = false
                     }
                     onClick()
@@ -62,11 +66,12 @@ fun TacticalRoundButton(
                 modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
+            letterSpacing = 0.6.sp,
             color = palette.textSecondary
         )
     }
