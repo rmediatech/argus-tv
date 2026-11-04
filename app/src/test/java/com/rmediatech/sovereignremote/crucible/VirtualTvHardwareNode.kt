@@ -40,6 +40,7 @@ class VirtualTvHardwareNode(
     var sleepGuardAcquired: Boolean = false
     var activeApp: String = "com.google.android.tvlauncher"
     var isShowingProfilePicker: Boolean = false
+    private var profilePickerDismissed: Boolean = false
     var playbackStatus: PlaybackStatus = PlaybackStatus.IDLE
     var playheadMs: Long = 0L
     var volumeLevel: Int = 15
@@ -72,6 +73,7 @@ class VirtualTvHardwareNode(
             RemoteKey.PAUSE -> playbackStatus = PlaybackStatus.PAUSED
             RemoteKey.SELECT -> {
                 if (isShowingProfilePicker) {
+                    profilePickerDismissed = true
                     isShowingProfilePicker = false
                     playbackStatus = PlaybackStatus.PLAYING
                 }
@@ -90,7 +92,7 @@ class VirtualTvHardwareNode(
     override suspend fun launchMediaUri(device: RemoteDevice, uriOrQuery: String, source: CinemaSource): Result<Unit> {
         commandLog.add("BEAM_URI:$uriOrQuery:SOURCE:${source.name}")
         activeApp = source.displayName
-        if (hasProfilePickerBug) {
+        if (hasProfilePickerBug && !profilePickerDismissed) {
             isShowingProfilePicker = true
             playbackStatus = PlaybackStatus.BUFFERING
             playheadMs = -1L

@@ -194,10 +194,12 @@ class ArgusMediaCoordinator(
 
         scope.launch {
             for (dev in allPartyDevices) {
-                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: halting playback & resetting ${dev.name} (${dev.ipAddress}) to factory defaults")
-                // 1. Explicitly pause playback on the TV so the party actually stops playing!
+                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: halting playback & returning to home on ${dev.name} (${dev.ipAddress})")
+                // 1. Explicitly pause playback on the TV so sound and video stop instantly
                 registry.sendKey(dev, RemoteKey.PAUSE)
-                // 2. Release wake lock / sleep guard leases and restore factory settings
+                // 2. Return to home launcher screen so the TV cleanly exits video player
+                registry.sendKey(dev, RemoteKey.HOME)
+                // 3. Release wake lock / sleep guard leases and restore factory settings
                 registry.releaseSleepGuard(dev)
             }
         }
@@ -285,12 +287,28 @@ class ArgusMediaCoordinator(
                 // Any smart TV display (Fire TV, Roku, Google TV, Samsung Tizen) whose runtime presents
                 // a multi-account "Who's watching?" picker stalls with position <= 0 or BUFFERING/IDLE.
                 delay(2800)
+                var anyBypassed = false
                 for (dev in allTargets) {
                     val state = registry.queryNowPlaying(dev)
                     if (state == null || state.status != PlaybackStatus.PLAYING || state.positionMs <= 0L) {
                         SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight bypass: unsticking ${dev.name} (${dev.deviceType}) from modal profile picker via SELECT")
                         registry.sendKey(dev, RemoteKey.SELECT)
+                        anyBypassed = true
                     }
+                }
+
+                // Lockstep Party Parity Alignment:
+                // If multiple TVs are in Watch Party and any device required a profile bypass while
+                // others were already streaming, re-align all screens to 0:00 in lockstep so both TVs play at the exact same frame!
+                if (allTargets.size > 1 && anyBypassed) {
+                    delay(2200) // Allow bypassed TV to authenticate and initialize player
+                    SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Lockstep Parity: Re-aligning all ${allTargets.size} Watch Party TVs to origin (0:00)")
+                    val originUri = if (canonicalUri.contains("watch?v=") && !canonicalUri.contains("&t=")) {
+                        "$canonicalUri&t=0s"
+                    } else canonicalUri
+                    allTargets.map { dev ->
+                        async { registry.launchMediaUri(dev, originUri, source) }
+                    }.awaitAll()
                 }
 
                 // Allow hardware renderers to acquire media sessions naturally

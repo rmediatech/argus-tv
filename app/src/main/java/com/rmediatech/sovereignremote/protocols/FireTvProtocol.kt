@@ -121,8 +121,15 @@ class FireTvProtocol(private val context: Context? = null) : SmartTvProtocol {
             try {
                 val dadb = getDadb(device.ipAddress, 5555)
                 val eventNode = resolveEventNode(device.ipAddress, dadb)
-                val fastCmd = if (key == RemoteKey.INFO) {
-                    "input keyevent $keycode || (sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0)"
+                val isMediaKey = key == RemoteKey.INFO ||
+                    key == RemoteKey.PAUSE ||
+                    key == RemoteKey.PLAY ||
+                    key == RemoteKey.PLAY_PAUSE ||
+                    key == RemoteKey.REWIND ||
+                    key == RemoteKey.FAST_FORWARD
+
+                val fastCmd = if (isMediaKey) {
+                    "input keyevent $keycode"
                 } else {
                     "sendevent /dev/input/$eventNode 1 $scancode 1; sendevent /dev/input/$eventNode 0 0 0; sendevent /dev/input/$eventNode 1 $scancode 0; sendevent /dev/input/$eventNode 0 0 0 || input keyevent $keycode"
                 }

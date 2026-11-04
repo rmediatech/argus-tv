@@ -155,5 +155,11 @@ class SovereignUserFlowHardwareCrucibleTest {
         assertFalse("Google TV sleep guard must be cleanly released", googleTvNode.sleepGuardAcquired)
         assertEquals("Fire TV stay-on setting must remain pristine (0)", 0, fireTvNode.stayOnWhilePluggedInSetting)
         assertEquals("Google TV stay-on setting must remain pristine (0)", 0, googleTvNode.stayOnWhilePluggedInSetting)
+
+        // Verify that Stop Party explicitly dispatched PAUSE + HOME to all screens for clean teardown
+        assertTrue("Fire TV must have received PAUSE on stop", fireTvNode.commandLog.contains("KEY:PAUSE"))
+        assertTrue("Fire TV must have received HOME to exit YouTube", fireTvNode.commandLog.contains("KEY:HOME"))
+        assertTrue("Google TV must have received PAUSE on stop", googleTvNode.commandLog.contains("KEY:PAUSE"))
+        assertTrue("Google TV must have received HOME to exit YouTube", googleTvNode.commandLog.contains("KEY:HOME"))
     }
 }
