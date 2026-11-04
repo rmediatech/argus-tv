@@ -172,17 +172,19 @@ class ArgusMediaCoordinator(
 
     /**
      * Seamless & Automatic Watch Party Stop + Reset:
-     * Disengages all synced follower TVs, immediately restores factory power/sleep settings
-     * across every linked TV model agnostically, resets nowPlaying telemetry, and clears leases.
+     * Disengages all synced follower TVs, immediately pauses/stops media playback across
+     * both leader and follower TVs, restores factory power/sleep settings agnostically,
+     * resets nowPlaying telemetry, and clears leases.
      */
     fun stopWatchParty(allDevices: List<RemoteDevice> = emptyList()) {
         val targetIps = watchPartyIps
         watchPartyIps = emptySet()
         followerTelemetry = emptyMap()
         healingSnapshot = null
+        nowPlaying = null
         sessionStore.clearSession()
 
-        val toRelease = buildSet {
+        val allPartyDevices = buildSet {
             addAll(guardedDevices.values)
             for (ip in targetIps) {
                 allDevices.find { it.ipAddress == ip }?.let { add(it) }
@@ -191,8 +193,11 @@ class ArgusMediaCoordinator(
         guardedDevices.clear()
 
         scope.launch {
-            for (dev in toRelease) {
-                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: resetting ${dev.name} (${dev.ipAddress}) to factory defaults")
+            for (dev in allPartyDevices) {
+                SovereignLogger.i(SovereignLogger.Category.LIFECYCLE, "Seamless WatchParty Stop: halting playback & resetting ${dev.name} (${dev.ipAddress}) to factory defaults")
+                // 1. Explicitly pause playback on the TV so the party actually stops playing!
+                registry.sendKey(dev, RemoteKey.PAUSE)
+                // 2. Release wake lock / sleep guard leases and restore factory settings
                 registry.releaseSleepGuard(dev)
             }
         }
