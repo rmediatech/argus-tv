@@ -276,22 +276,20 @@ class ArgusMediaCoordinator(
                 async { registry.launchMediaUri(dev, canonicalUri, source) }
             }.awaitAll()
             if (results.first().isSuccess) {
-                // Pre-flight profile picker bypass: Fire TV Cobalt webview pauses at account selector
-                val fireTvTargets = allTargets.filter { it.deviceType == com.rmediatech.sovereignremote.model.DeviceType.FIRE_TV }
-                if (fireTvTargets.isNotEmpty()) {
-                    delay(2800)
-                    for (ftv in fireTvTargets) {
-                        val state = registry.queryNowPlaying(ftv)
-                        // If Fire TV has position == 0 / negative, speed == 0, or is buffering/idle, it is trapped on the Cobalt profile picker
-                        if (state == null || state.status != PlaybackStatus.PLAYING || state.positionMs <= 0L) {
-                            SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight bypass: unsticking Fire TV ${ftv.name} from profile picker via SELECT")
-                            registry.sendKey(ftv, RemoteKey.SELECT)
-                        }
+                // TV-Model-Agnostic Profile Picker Bypass:
+                // Any smart TV display (Fire TV, Roku, Google TV, Samsung Tizen) whose runtime presents
+                // a multi-account "Who's watching?" picker stalls with position <= 0 or BUFFERING/IDLE.
+                delay(2800)
+                for (dev in allTargets) {
+                    val state = registry.queryNowPlaying(dev)
+                    if (state == null || state.status != PlaybackStatus.PLAYING || state.positionMs <= 0L) {
+                        SovereignLogger.i(SovereignLogger.Category.PROTOCOL, "Pre-flight bypass: unsticking ${dev.name} (${dev.deviceType}) from modal profile picker via SELECT")
+                        registry.sendKey(dev, RemoteKey.SELECT)
                     }
                 }
 
                 // Allow hardware renderers to acquire media sessions naturally
-                delay(2000)
+                delay(1800)
                 val refreshed = registry.queryNowPlaying(target)
                 nowPlaying = refreshed
             } else {
