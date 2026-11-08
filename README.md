@@ -20,6 +20,34 @@
 
 ---
 
+## 📥 Direct Android APK Download & Installation (Zero Play Store Gatekeeping)
+
+Because **Argus** contains zero Google Play Services telemetry, zero ad SDKs, and zero cloud tracking, we distribute the cryptographically signed `.apk` **directly from our Sovereign Binary Vault**—bypassing Google Play Store gatekeeping entirely:
+
+### Option A: Direct Phone Browser Download (30 Seconds)
+1. On your Android phone, open your browser and visit **[https://rmediatech.com/downloads](https://rmediatech.com/downloads)** (or tap **[Direct Download `argus.apk`](https://rmediatech.com/bin/argus.apk)**).
+2. Open the downloaded `argus.apk` file. If prompted by Android, toggle **"Allow from this source"** (standard Android prompt for apps installed outside the Play Store) and tap **Install**.
+
+### Option B: Terminal / Workstation Verification & ADB Install
+```bash
+# 1. Download the signed APK, SHA-256 checksum, and OpenPGP signature
+curl -sSL https://rmediatech.com/bin/argus.apk -o argus.apk
+curl -sSL https://rmediatech.com/signatures/argus.apk -o argus.apk.asc
+curl -sSL https://rmediatech.com/SOVEREIGN_RELEASE_KEY.asc | gpg --import
+
+# 2. Verify cryptographic provenance (Key: 6BC8 DA5E 7F1B 8B49 BE5C D70A 4E42 8019 A109 578B)
+gpg --verify argus.apk.asc argus.apk
+echo "2793dbc489993e7376fa5ff19c14e8e2e32c2044d734c24fd31047268055902b  argus.apk" | sha256sum -c -
+
+# 3. Install directly to your connected Android phone
+adb install -r argus.apk
+```
+
+* 📖 **Full Documentation & Cinema Guide**: [docs/CINEMA_WATCH_PARTY.md](docs/CINEMA_WATCH_PARTY.md)
+* 📜 **Engineer-to-Engineer Changelog**: [CHANGELOG.md](CHANGELOG.md)
+
+---
+
 ## 🏛️ Mythological Lineage & Geometric Rationale
 
 * **The Hundred-Eyed Guardian**: In Hellenic myth, **Argus Panoptes** (*Ἄργος Πανόπτης* — "the all-seeing") was the titan sentinel of Argos with one hundred unblinking eyes. With some eyes resting while the rest watched the horizons, surprise incursions were physically impossible.
