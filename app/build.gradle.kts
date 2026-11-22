@@ -15,14 +15,14 @@ plugins {
 
 android {
     namespace = "com.rmediatech.sovereignremote"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rmediatech.sovereignremote"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 10
-        versionName = "1.3.5"
+        targetSdk = 36
+        versionCode = 2
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
